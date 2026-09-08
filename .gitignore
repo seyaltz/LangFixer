@@ -1,0 +1,8 @@
+# build outputs (get them from the Releases page or run build.cmd)
+*.exe
+*.pdb
+dist/
+
+# test artefacts
+test-output.txt
+tools/e2e-output.txt
