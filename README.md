@@ -12,6 +12,11 @@ rest of the sentence comes out right.
 Single `LangFixer.exe`, no installer, no runtime to install (uses the .NET Framework 4.8
 that ships with Windows 10/11).
 
+**Video walkthrough**: `langfixer-demo.mp4` on the
+[v1.0 release](https://github.com/seyaltz/LangFixer/releases/tag/v1.0) (3:20, narrated, subtitles
+burned in, `.vtt` and transcript alongside). Two intro slides, then a live Notepad demo in which
+every step is read back through UI Automation and asserted; the pipeline is in `video/`.
+
 **Rebuilt independently from the spec.** On 2026-09-09 a separate coding agent, given only
 [SPEC.md](SPEC.md) and forbidden from reading this source, rebuilt the program in 23 minutes. Its
 build passed its own 81 self-test checks and this repository's 40-step live Notepad driver, 40/40.

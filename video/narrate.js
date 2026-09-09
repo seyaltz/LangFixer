@@ -108,7 +108,7 @@ const inputs = ['-i', src];
 scheduled.forEach(c => inputs.push('-i', c.wav));
 const delays = scheduled.map((c, i) => `[${i + 1}:a]adelay=${Math.round(c.start * 1000)}|${Math.round(c.start * 1000)}[a${i}]`);
 const mix = scheduled.map((_, i) => `[a${i}]`).join('') + `amix=inputs=${scheduled.length}:dropout_transition=0:normalize=0[aout]`;
-const style = "FontName=Segoe UI,Fontsize=13,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=28";
+const style = "FontName=Segoe UI,Fontsize=11,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=24";
 const stretched = segments.filter(s => s.rawEnd > s.rawStart + 0.001);
 const segFilters = stretched.map((s, i) => `[0:v]trim=start=${s.rawStart.toFixed(3)}:end=${s.rawEnd.toFixed(3)},setpts=${s.scale.toFixed(6)}*(PTS-STARTPTS)[sg${i}]`);
 const concat = stretched.map((_, i) => `[sg${i}]`).join('') + `concat=n=${stretched.length}:v=1:a=0[vs]`;
@@ -118,4 +118,5 @@ ff([...inputs, '-filter_complex', `${vfilter};${delays.join(';')};${mix}`, '-map
 
 console.log(`video      ${out}\nsubtitles  ${path.join(DIR, NAME + '.vtt')}\ntranscript ${path.join(DIR, NAME + '-transcript.md')}\nduration   ${probe(out).toFixed(1)}s`);
 fs.rmSync(TMP, { recursive: true, force: true });
+
 
