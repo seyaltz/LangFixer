@@ -177,6 +177,13 @@ namespace LangFixer
             Line("     Hebrew autocorrect on: bedicha -> " + (hd2.Fix ? "'" + hd2.Text + "'" : "keep") + "  [" + hd2.Reason + "]");
             acSettings.AutoCorrectHebrew = false;
             Decide(acDet, layouts, "gradle", Lang.English, false, "autocorrect ON: ignored word untouched");
+            // Cross-layout typo repair (from Eyal's log: 'chsev' for בדיקה, h and s swapped)
+            DecideText(acDet, layouts, "cshev", Lang.English, "בדיקה", "bdika typed correctly in English layout -> plain layout fix");
+            DecideText(acDet, layouts, "chsev", Lang.English, "בדיקה", "cross-layout typo: chsev (swapped pair) -> bdika");
+            DecideText(acDet, layouts, "hlelo", Lang.Hebrew, "hello", "cross-layout typo the other way: hlelo on Hebrew layout -> hello");
+            acSettings.AutoCorrect = false;
+            Decide(acDet, layouts, "chsev", Lang.English, false, "cross-layout repair needs the autocorrect switch: off -> keep");
+            acSettings.AutoCorrect = true;
             Decide(acDet, layouts, "Teh", Lang.English, false, "autocorrect ON: capitalized word untouched");
             DecideText(acDet, layouts, "akuo", Lang.English, "שלום", "autocorrect ON: layout fix still applies (akuo -> shalom, not the suggestion 'akua')");
             DecideText(acDet, layouts, "thl", Lang.English, "איך", "autocorrect ON: thl -> eich (suggestion 'the' is not a neighbour-key typo)");

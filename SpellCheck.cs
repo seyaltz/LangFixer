@@ -174,6 +174,19 @@ namespace LangFixer
             return true;
         }
 
+        /// <summary>Hebrew letters only (inner marks allowed), no placement rules: a typo may put a final letter mid-word.</summary>
+        public static bool IsStructurallyHebrewLoose(string w)
+        {
+            if (w.Length < 2) return false;
+            for (int i = 0; i < w.Length; i++)
+            {
+                char c = w[i];
+                bool innerMark = (c == '\'' || c == '"' || c == '׳' || c == '״') && i > 0 && i < w.Length - 1;
+                if (!IsHebrewLetter(c) && !innerMark) return false;
+            }
+            return true;
+        }
+
         public bool IsValidHebrew(string w)
         {
             if (!IsStructurallyHebrew(w)) return false;

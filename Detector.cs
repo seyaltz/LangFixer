@@ -158,6 +158,13 @@ namespace LangFixer
                     return Decision.To(Lang.Hebrew, hePrefix + trail, "'" + en + "' is not English, '" + hePrefix + "' is Hebrew");
             }
 
+            // Cross-layout typo: "chsev" is not English and בידקה is not Hebrew, but בידקה is one swapped pair away
+            // from בדיקה. Convert and correct in one step (typing-signature edits only, 4+ letters).
+            string heRepaired = CrossLayoutRepair(Lang.Hebrew, he);
+            if (heRepaired != null)
+                return Decision.To(Lang.Hebrew, heRepaired + hebrew.Substring(he.Length),
+                    "cross-layout typo: '" + en + "' -> '" + heRepaired + "'");
+
             if (corrected != null)
                 return Decision.To(Lang.English, corrected + trail, "spelling: '" + en + "' -> '" + corrected + "'");
             // Fails both dictionaries (and is not merely too short): remember it for the names guard.
@@ -194,6 +201,11 @@ namespace LangFixer
                 return Decision.To(Lang.English, english, "'" + he + "' is not Hebrew, '" + en + "' is a one-letter English word");
             if (enValid)
                 return Decision.To(Lang.English, english, "'" + he + "' is not Hebrew, '" + en + "' is English");
+            // Cross-layout typo the other way: "hlelo" typed on the Hebrew layout -> hello.
+            string enRepaired = CrossLayoutRepair(Lang.English, en);
+            if (enRepaired != null)
+                return Decision.To(Lang.English, enRepaired + english.Substring(en.Length),
+                    "cross-layout typo: '" + he + "' -> '" + enRepaired + "'");
             if (corrected != null)
                 return Decision.To(Lang.Hebrew, corrected + heTrail, "spelling: '" + he + "' -> '" + corrected + "'");
             string enVerdict = en.Length < MinEnglishLength ? "English too short" : "not English" + Err();
@@ -208,11 +220,81 @@ namespace LangFixer
         /// </summary>
         /// <param name="strongTypo">True when the edit has a typing signature: swapped adjacent letters, or a
         /// substitution by a physically neighbouring key. Such a correction may outrank a layout switch.</param>
+        /// <summary>
+        /// The word in the OTHER layout is not a dictionary word either, but a real word is one typing-signature edit
+        /// away from it. Needs the autocorrect switch, 4+ letters, and a strong edit; the per-language Hebrew gate does
+        /// not apply because the layout switch itself is the main evidence and only strong edits are accepted.
+        /// </summary>
+        public string CrossLayoutRepair(Lang target, string rendering)
+        {
+            if (!_settings.AutoCorrect || rendering.Length < LayoutOverSpellingLength) return null;
+            if (target == Lang.Hebrew ? !Dictionaries.IsStructurallyHebrewLoose(rendering) : !Dictionaries.IsStructurallyEnglish(rendering)) return null;
+            // Generate the typing-signature neighbours ourselves instead of asking the checker for suggestions:
+            // the Windows Hebrew checker does not offer בדיקה for בידקה, but it does confirm בדיקה is a word.
+            var valid = new System.Collections.Generic.List<string>();
+            foreach (var candidate in TypoNeighbours(rendering, target == Lang.English))
+            {
+                if (candidate == rendering || valid.Contains(candidate)) continue;
+                bool ok = target == Lang.Hebrew ? _dict.IsValidHebrew(candidate) : _dict.IsValidEnglish(candidate);
+                if (ok && _dict.LastError.Length == 0) valid.Add(candidate);
+            }
+            if (valid.Count == 1) return valid[0];
+            if (valid.Count == 0) return null;
+            // Several "valid" repairs (the Hebrew checker also accepts יבדקה): only an everyday word breaks the tie.
+            if (target == Lang.Hebrew)
+            {
+                var common = valid.FindAll(CommonWords.Hebrew.Contains);
+                if (common.Count == 1) return common[0];
+            }
+            return null; // ambiguous: better to leave the word than to guess
+        }
+
+        /// <summary>Adjacent transpositions first, then (English only) neighbour-key substitutions.</summary>
+        public static System.Collections.Generic.IEnumerable<string> TypoNeighbours(string w, bool withKeySubstitutions)
+        {
+            var chars = w.ToCharArray();
+            for (int i = 0; i + 1 < chars.Length; i++)
+            {
+                if (chars[i] == chars[i + 1]) continue;
+                var c = (char[])chars.Clone();
+                char t = c[i]; c[i] = c[i + 1]; c[i + 1] = t;
+                yield return new string(c);
+            }
+            if (!withKeySubstitutions) yield break;
+            for (int i = 0; i < chars.Length; i++)
+            {
+                char lower = char.ToLowerInvariant(chars[i]);
+                foreach (var row in QwertyRows)
+                {
+                    int col = row.IndexOf(lower);
+                    if (col < 0) continue;
+                    foreach (var r2 in QwertyRows)
+                    {
+                        for (int dc = -1; dc <= 1; dc++)
+                        {
+                            int c2 = col + dc;
+                            if (c2 < 0 || c2 >= r2.Length || Math.Abs(Array.IndexOf(QwertyRows, r2) - Array.IndexOf(QwertyRows, row)) > 1) continue;
+                            char n = r2[c2];
+                            if (n == lower) continue;
+                            var c = (char[])chars.Clone();
+                            c[i] = char.IsUpper(chars[i]) ? char.ToUpperInvariant(n) : n;
+                            yield return new string(c);
+                        }
+                    }
+                }
+            }
+        }
+
         public string TryAutoCorrect(Lang lang, string word, out bool strongTypo)
+        {
+            return TryAutoCorrect(lang, word, out strongTypo, false);
+        }
+
+        private string TryAutoCorrect(Lang lang, string word, out bool strongTypo, bool crossLayout)
         {
             strongTypo = false;
             if (!_settings.AutoCorrect) return null;
-            if (lang == Lang.Hebrew && !_settings.AutoCorrectHebrew) return null; // the Windows Hebrew checker "fixed" correct words
+            if (lang == Lang.Hebrew && !_settings.AutoCorrectHebrew && !crossLayout) return null; // the Windows Hebrew checker "fixed" correct words
             if (word.Length < MinAutoCorrectLength) return null;
             if (lang == Lang.English)
             {
@@ -231,8 +313,8 @@ namespace LangFixer
                 strongTypo = kind == EditKind.Transposition
                     || (kind == EditKind.Substitution && lang == Lang.English && AreNeighbourKeys(word, s));
                 // A weak suggestion (any other single edit) produced "postures" for postgres and "poll" for pull
-                // in real use: it applies only when the user opted into aggressive mode.
-                if (!strongTypo && !_settings.AutoCorrectAggressive) return null;
+                // in real use: it applies only when the user opted into aggressive mode (never across layouts).
+                if (!strongTypo && (crossLayout || !_settings.AutoCorrectAggressive)) return null;
                 return s;
             }
             return null;

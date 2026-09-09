@@ -100,6 +100,13 @@ that only change case or add punctuation are rejected (`heald` → `Heald`, `etc
 valid word of 4+ letters in the *other* layout beats any spelling suggestion (`eurv` is קורה, not
 `eruv`). Ctrl+Alt+H undoes any correction and adds the word to the ignore list.
 
+**Cross-layout typo repair** (needs the autocorrect switch): when neither rendering is a word but the
+other layout's rendering is one typing-signature edit from a real word, the word is converted *and*
+corrected in one step. `chsev` typed on the English layout is בידקה, one swapped pair from בדיקה, so it
+becomes בדיקה and the layout switches. Candidates are generated, not taken from the checker's
+suggestions, and when the permissive Hebrew checker accepts more than one candidate only an everyday
+word (a small built-in list) breaks the tie; otherwise the word is left alone.
+
 Known limit: a name that happens to have a typo signature and stands alone (`ayash` → `ayahs`) is
 still corrected once; undo teaches it. **Grammar is not attempted**: a dictionary cannot judge
 grammar; that needs a language model.

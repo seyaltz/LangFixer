@@ -164,9 +164,28 @@ if heValid                     -> FIX Hebrew, text = hebrew            # 3-lette
 if trail != "" and len(trail) < len(hebrew):
      hePrefix = TrimTrailing(hebrew[:len(hebrew)-len(trail)])   # they pressed the real , or . key after a Hebrew word
      if len(hePrefix) >= 3 and IsValidHebrew(hePrefix) -> FIX Hebrew, text = hePrefix + trail
+heRepaired = CrossLayoutRepair(Hebrew, he)                # 5.5b: "chsev" -> בידקה is one swapped pair from בדיקה
+if heRepaired                  -> FIX Hebrew, text = heRepaired + hebrew[len(he):]   ("cross-layout typo")
 if corrected                   -> FIX English, text = corrected + trail   # weak, aggressive mode only
 keep ("Hebrew too short" | "not Hebrew"), Unknown = lowercaseUnknown and len(he) >= 3
 ```
+
+The Hebrew branch mirrors this with `CrossLayoutRepair(English, en)` after the `enValid` check
+("hlelo" typed on the Hebrew layout → `hello`).
+
+### 5.5b Cross-layout typo repair
+
+`CrossLayoutRepair(target, rendering)`: requires `autocorrect = 1` and a rendering of 4+ letters
+made only of the target alphabet. **Generate** the typing-signature neighbours of the rendering
+yourself (every adjacent transposition; for English also every QWERTY neighbour-key substitution)
+and collect the ones the target dictionary accepts. Exactly one → use it. Several (the Hebrew checker
+also accepts יבדקה) → keep only candidates on a small built-in list of everyday Hebrew words
+(`CommonWords.cs`, a few hundred entries); exactly one left → use it, otherwise leave the word.
+Do not rely on the checker's suggestions: the Windows Hebrew checker does not suggest בדיקה for
+בידקה, but it confirms בדיקה is a word. Weak
+edits never apply across layouts, and the per-language Hebrew autocorrect gate does not apply here:
+the layout switch is the main evidence and the edit is strong. Result: the word is converted to the
+other layout *and* corrected in one rewrite.
 
 `Unknown` on a kept decision means the word failed both dictionaries; the Engine remembers it as
 `prevUnknown` for the next word in the same window (cleared by a fix, a click or a window change).
@@ -451,6 +470,9 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 | `tal` alone / `tal` after an unknown word | English | fix → `אשך` / keep | names guard needs a preceding unknown word |
 | `webguru` | English | keep, Unknown = true | feeds the names guard |
 | `csh,v` (בדיכה) | Hebrew | keep by default | Hebrew autocorrect is opt-in |
+| autocorrect on: `chsev` | English | fix → `בדיקה` | cross-layout typo repair (swapped pair) |
+| autocorrect on: `hlelo` | Hebrew | fix → `hello` | cross-layout typo repair the other way |
+| autocorrect off: `chsev` | English | keep | repair needs the autocorrect switch |
 | `AcceptableSuggestion`: (heald, Heald) no; (hello, Hello) no; (teh, the) yes; (Teh, The) yes | | | |
 | autocorrect on: `hello` | Hebrew | fix → `hello` | |
 | `ForcedText`: `akuo,`→`שלום,`, `akuo/`→`שלום.`, `akuo`→`שלום`, to English `hello,`→`hello,` | | | |
@@ -495,10 +517,12 @@ Ctrl+Alt+H -> "gradle " becomes "ערשגךק "              Hebrew   (forced co
 Ctrl+Alt+H -> back to "gradle "                        English
 eurv␣    -> + "קורה "                                  Hebrew   (layout beats spelling)
 (harness switches the layout back to English)
+chsev␣   -> + "בדיקה "                                 Hebrew   (cross-layout typo repair)
+(harness switches the layout back to English)
 akuo, then Ctrl+Alt+H (no separator) -> + "שלום,"      Hebrew
 ```
 
-45 checks = 22 steps × (document text + focus-thread layout) + 1 precondition; all must pass on an idle desktop.
+47 checks = 23 steps × (document text + focus-thread layout) + 1 precondition; all must pass on an idle desktop.
 
 ## 10. Recommended order of work (TDD)
 

@@ -108,6 +108,9 @@ internal static class Driver
             Step("eurv ", "קורה ", LangFixer.Lang.Hebrew, "layout beats spelling: eurv -> kore (not 'eruv')");
             Fixer.SwitchLayout(_layouts.English);
             Thread.Sleep(500);
+            Step("chsev ", "בדיקה ", LangFixer.Lang.Hebrew, "cross-layout typo: chsev -> bdika (swapped pair repaired while switching)");
+            Fixer.SwitchLayout(_layouts.English);
+            Thread.Sleep(500);
             Check(Lang() == LangFixer.Lang.English, "precondition for the last test: English layout");
 
             Type("akuo,"); // no separator yet
