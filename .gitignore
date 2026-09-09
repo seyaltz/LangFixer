@@ -6,3 +6,13 @@ dist/
 # test artefacts
 test-output.txt
 tools/e2e-output.txt
+
+# video pipeline working files
+video/.capture*/
+video/.tts/
+video/*.mp4
+video/*.webm
+video/*.captions.json
+video/*.vtt
+video/*-transcript.md
+video/*.exe
