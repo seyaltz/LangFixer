@@ -177,6 +177,13 @@ namespace LangFixer
             Line("     Hebrew autocorrect on: bedicha -> " + (hd2.Fix ? "'" + hd2.Text + "'" : "keep") + "  [" + hd2.Reason + "]");
             acSettings.AutoCorrectHebrew = false;
             Decide(acDet, layouts, "gradle", Lang.English, false, "autocorrect ON: ignored word untouched");
+            // Rare short English words do not win over Hebrew (from Eyal's log: יטולת became "hyuk,")
+            Decide(acDet, layouts, "hyuk,", Lang.Hebrew, false, "hyuk, typed in Hebrew (a slip of yecholet) -> keep, 'hyuk' is not an everyday word");
+            Decide(acDet, layouts, "hyuk", Lang.Hebrew, false, "hyuk -> keep");
+            Decide(det, layouts, "did", Lang.Hebrew, true, "did typed in Hebrew still fixes (everyday word)");
+            Decide(det, layouts, "text", Lang.Hebrew, true, "text typed in Hebrew still fixes");
+            Decide(det, layouts, "workflow", Lang.Hebrew, true, "workflow typed in Hebrew still fixes (6+ letters)");
+            Check(!CommonWords.English.Contains("hyuk") && CommonWords.English.Contains("Hello"), "common English list: hyuk absent, Hello present (case-insensitive)");
             // Cross-layout typo repair (from Eyal's log: 'chsev' for בדיקה, h and s swapped)
             DecideText(acDet, layouts, "cshev", Lang.English, "בדיקה", "bdika typed correctly in English layout -> plain layout fix");
             DecideText(acDet, layouts, "chsev", Lang.English, "בדיקה", "cross-layout typo: chsev (swapped pair) -> bdika");

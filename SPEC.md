@@ -199,14 +199,21 @@ if IsValidHebrew(he)           -> keep "valid Hebrew"          # structurally ne
 if the checker call failed     -> keep "dictionary fault"
 heTrail = hebrew[len(he):]
 en = TrimTrailing(english); enValid = len(en) >= 2 and IsValidEnglish(en)
+if enValid and len(en) < 6 and en not in CommonEnglish -> keep "rare short English word", Unknown = true
+                               # the English checker accepts "hyuk"; the Hebrew slip יטולת became "hyuk,"
 corrected, strong = (names_guard and prevUnknown) ? null : TryAutoCorrect(Hebrew, he)   # the guard only withholds autocorrect here
 if enValid and len(en) >= 4    -> FIX English, text = english
 if corrected and strong        -> FIX Hebrew, text = corrected + heTrail
 if en in {"i","I","a","A"}     -> FIX English, text = english          # ן / ש alone are never words
 if enValid                     -> FIX English, text = english
+enRepaired = CrossLayoutRepair(English, en)              # 5.5b: "hlelo" on the Hebrew layout -> hello
+if enRepaired                  -> FIX English, text = enRepaired + english[len(en):]
 if corrected                   -> FIX Hebrew, text = corrected + heTrail
 keep ("English too short" | "not English"), Unknown = len(en) >= 2 and len(he) >= 2
 ```
+
+`CommonEnglish` is a built-in list of a few hundred everyday English words including contractions
+(`it's`, `don't`), case-insensitive (`CommonWords.cs`).
 
 **After either branch**, before returning a FIX: if `text == typed` → keep "already reads as the
 target text" (F7). Shift+letter in the Hebrew layout yields Latin uppercase, so `LON` typed inside
@@ -470,6 +477,7 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 | `tal` alone / `tal` after an unknown word | English | fix → `אשך` / keep | names guard needs a preceding unknown word |
 | `webguru` | English | keep, Unknown = true | feeds the names guard |
 | `csh,v` (בדיכה) | Hebrew | keep by default | Hebrew autocorrect is opt-in |
+| `hyuk,` / `hyuk` | Hebrew | keep | "hyuk" is in the English dictionary but not an everyday word; `did`, `text`, `workflow` still convert |
 | autocorrect on: `chsev` | English | fix → `בדיקה` | cross-layout typo repair (swapped pair) |
 | autocorrect on: `hlelo` | Hebrew | fix → `hello` | cross-layout typo repair the other way |
 | autocorrect off: `chsev` | English | keep | repair needs the autocorrect switch |

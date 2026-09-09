@@ -183,6 +183,10 @@ namespace LangFixer
             // If they meant English, a trailing , . ; ' is punctuation ("hello," typed in Hebrew).
             string en = TrimTrailing(english);
             bool enValid = en.Length >= MinEnglishLength && _dict.IsValidEnglish(en);
+            // The English dictionary accepts obscure short entries ("hyuk"), and a Hebrew slip of 4-5 letters spells
+            // one now and then (יטולת -> "hyuk,"). Short English targets must be everyday words; 6+ letters need not.
+            if (enValid && en.Length < 6 && !CommonWords.English.Contains(en))
+                return Decision.KeepUnknown("'" + en + "' is a rare short English word; more likely a Hebrew slip");
 
             string heTrail = hebrew.Substring(he.Length);
             bool strongTypo = false;
