@@ -55,16 +55,17 @@ async function caption(page, text, ms = 3600, tone = 'info', sayText = null) {
     await page.waitForTimeout(ms);
 }
 
-/** Full-screen slide. Leading '#' muted, '+' green, '-' red, '>' code style. */
+/** Full-screen slide. Leading '#' muted, '+' green, '-' red, '>' code style (always left-to-right). Hebrew titles switch the slide to right-to-left. */
 async function slide(page, title, lines, ms = 4200, sayText = null) {
     if (sayText) captions.push({ at: now(), text: title, tone: 'info', say: sayText });
-    await page.evaluate(({ title, lines }) => {
+    const rtl = /[֐-׿]/.test(title);
+    await page.evaluate(({ title, lines, rtl }) => {
         let el = document.getElementById('__qa_slide');
         if (!el) { el = document.createElement('div'); el.id = '__qa_slide'; document.documentElement.appendChild(el); }
         el.setAttribute('style', ['position:fixed', 'inset:0', 'z-index:2147483646',
             'background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%)', 'color:#e2e8f0',
-            'font:400 24px/1.6 Segoe UI,Arial,sans-serif', 'padding:52px 72px', 'direction:ltr',
-            'text-align:left', 'pointer-events:none', 'overflow:hidden'].join(';'));
+            'font:400 24px/1.6 Segoe UI,Arial,sans-serif', 'padding:52px 72px', 'direction:' + (rtl ? 'rtl' : 'ltr'),
+            'text-align:' + (rtl ? 'right' : 'left'), 'pointer-events:none', 'overflow:hidden'].join(';'));
         el.replaceChildren();
         const h = document.createElement('div');
         h.setAttribute('style', 'font:700 44px/1.25 Segoe UI,Arial,sans-serif;color:#fff;margin-bottom:26px');
@@ -76,12 +77,12 @@ async function slide(page, title, lines, ms = 4200, sayText = null) {
             if (t.startsWith('#')) { row.setAttribute('style', 'color:#94a3b8;margin:14px 0 2px;font-size:20px'); row.textContent = t.slice(1).trim(); }
             else if (t.startsWith('+')) { row.setAttribute('style', 'color:#4ade80'); row.textContent = t.slice(1); }
             else if (t.startsWith('-')) { row.setAttribute('style', 'color:#f87171'); row.textContent = t.slice(1); }
-            else if (t.startsWith('>')) { row.setAttribute('style', 'font:500 22px/1.7 Consolas,monospace;color:#fde68a;background:rgba(0,0,0,.35);padding:2px 14px;border-radius:6px;display:inline-block;margin:3px 0'); row.textContent = t.slice(1).trim(); el.appendChild(row); el.appendChild(document.createElement('br')); continue; }
+            else if (t.startsWith('>')) { row.setAttribute('style', 'font:500 22px/1.7 Consolas,monospace;color:#fde68a;background:rgba(0,0,0,.35);padding:2px 14px;border-radius:6px;display:inline-block;margin:3px 0;direction:ltr;unicode-bidi:isolate'); row.textContent = t.slice(1).trim(); el.appendChild(row); el.appendChild(document.createElement('br')); continue; }
             else if (t.startsWith('@')) { row.setAttribute('style', 'font:600 34px/1.5 Segoe UI,Arial,sans-serif;color:#fff;margin:6px 0'); row.textContent = t.slice(1).trim(); }
             else { row.textContent = t || '\u00a0'; }
             el.appendChild(row);
         }
-    }, { title, lines });
+    }, { title, lines, rtl });
     await page.waitForTimeout(ms);
 }
 

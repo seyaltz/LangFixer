@@ -19,11 +19,16 @@ const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 
 const DIR = __dirname;
-const NAME = process.argv[2] || 'langfixer-intro';
+const argv = process.argv.slice(2);
+const NAME = argv.find(a => !a.startsWith('--')) || 'langfixer-intro';
+const argOf = (flag, def) => { const i = argv.indexOf(flag); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : def; };
 const TMP = path.join(DIR, '.tts');
 const GAP = 0.45;
-const RATE = -1;
-const VOICE = 'Microsoft David Desktop';
+/** System.Speech rate (-10..10) for the desktop voices; mapped to a speaking-rate factor for the OneCore voices. */
+const RATE = parseInt(argOf('--rate', '-1'), 10);
+/** "Microsoft David Desktop" (System.Speech) or a OneCore voice such as "Microsoft Asaf" (Hebrew), reached through WinRT. */
+const VOICE = argOf('--voice', 'Microsoft David Desktop');
+const ONECORE = !/Desktop$/.test(VOICE);
 
 const src = path.join(DIR, `${NAME}-raw.mp4`);
 const out = path.join(DIR, `${NAME}.mp4`);
@@ -45,17 +50,41 @@ const caps = JSON.parse(fs.readFileSync(capsFile, 'utf-8'));
 console.log(`video ${videoLen.toFixed(1)}s, ${caps.length} narration lines`);
 
 function speak(text, file) {
-    const ps = `
+    const f = file.replace(/\\/g, '\\\\');
+    // Text goes in as UTF-8 through a temp file: stdin through PowerShell mangles Hebrew.
+    const txt = path.join(TMP, 'line.txt');
+    fs.writeFileSync(txt, text, 'utf-8');
+    const t = txt.replace(/\\/g, '\\\\');
+    const ps = ONECORE ? `
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+function Await($op, $type) { $t = $asTaskGeneric.MakeGenericMethod($type).Invoke($null, @($op)); $t.Wait(-1) | Out-Null; $t.Result }
+[Windows.Media.SpeechSynthesis.SpeechSynthesizer, Windows.Media, ContentType=WindowsRuntime] | Out-Null
+[Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType=WindowsRuntime] | Out-Null
+$synth = New-Object Windows.Media.SpeechSynthesis.SpeechSynthesizer
+$v = [Windows.Media.SpeechSynthesis.SpeechSynthesizer]::AllVoices | Where-Object { $_.DisplayName -like '*${VOICE.replace('Microsoft ', '')}*' } | Select-Object -First 1
+if (-not $v) { throw 'voice not installed: ${VOICE}' }
+$synth.Voice = $v
+$synth.Options.SpeakingRate = ${(1 + RATE * 0.08).toFixed(2)}
+$text = [IO.File]::ReadAllText('${t}', [Text.Encoding]::UTF8)
+$stream = Await ($synth.SynthesizeTextToStreamAsync($text)) ([Windows.Media.SpeechSynthesis.SpeechSynthesisStream])
+$reader = New-Object Windows.Storage.Streams.DataReader($stream.GetInputStreamAt(0))
+$size = [uint32]$stream.Size
+Await ($reader.LoadAsync($size)) ([uint32]) | Out-Null
+$bytes = New-Object byte[] $size
+$reader.ReadBytes($bytes)
+[IO.File]::WriteAllBytes('${f}', $bytes)` : `
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Speech
 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
 try { $s.SelectVoice('${VOICE}') } catch { }
 $s.Rate = ${RATE}
-$s.SetOutputToWaveFile('${file.replace(/\\/g, '\\\\')}')
-$s.Speak([Console]::In.ReadToEnd())
+$s.SetOutputToWaveFile('${f}')
+$s.Speak([IO.File]::ReadAllText('${t}', [Text.Encoding]::UTF8))
 $s.Dispose()`;
-    const r = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { input: text, encoding: 'utf-8' });
-    if (r.status !== 0 || !fs.existsSync(file)) throw new Error('TTS failed: ' + (r.stderr || '').slice(-400));
+    const r = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { encoding: 'utf-8' });
+    if (r.status !== 0 || !fs.existsSync(file)) throw new Error('TTS failed: ' + (r.stderr || '').slice(-600));
 }
 
 const clips = [];
@@ -101,6 +130,7 @@ fs.writeFileSync(path.join(DIR, `${NAME}.vtt`),
 fs.writeFileSync(path.join(DIR, `${NAME}-transcript.md`),
     ['# LangFixer walkthrough - narration transcript', '',
      `Voice: ${VOICE}, rate ${RATE}. ${scheduled.length} lines over a ${finalLen.toFixed(0)}s video.`, '',
+     '<div dir="auto">', '',
      ...scheduled.map(c => `**${stamp(c.start).slice(3, 8)}** ${c.text}`), ''].join('\n'), 'utf-8');
 
 // ------------------------------------------------------------------------ mux
