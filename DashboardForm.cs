@@ -47,7 +47,7 @@ namespace LangFixer
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(560, 560);
+            ClientSize = new Size(640, 560);
             BackColor = Color.White;
 
             Build();
@@ -72,7 +72,7 @@ namespace LangFixer
             Controls.Add(_state);
 
             _toggle.Size = new Size(120, 40);
-            _toggle.Location = new Point(420, 50);
+            _toggle.Location = new Point(500, 50);
             _toggle.FlatStyle = FlatStyle.Flat;
             _toggle.Font = new Font("Segoe UI Semibold", 11f);
             _toggle.ForeColor = Color.White;
@@ -100,7 +100,7 @@ namespace LangFixer
             Controls.Add(feedLabel);
 
             _feed.Location = new Point(22, 200);
-            _feed.Size = new Size(518, 170);
+            _feed.Size = new Size(598, 170);
             _feed.Font = new Font("Consolas", 9f);
             _feed.BorderStyle = BorderStyle.FixedSingle;
             _feed.RightToLeft = RightToLeft.No;
@@ -108,10 +108,10 @@ namespace LangFixer
 
             // Behaviour options. Defaults are the conservative set measured on a day of real typing.
             int y = 380;
-            y = AddOption(Settings.KeyAutoCorrect, 22, y, "Auto-correct typos with a typing signature (swapped letters, neighbouring key). Ctrl+Alt+H undoes");
-            y = AddOption(Settings.KeyAggressive, 44, y, "Aggressive: also take any one-letter dictionary suggestion (turned postgres into postures)");
-            y = AddOption(Settings.KeyHebrew, 44, y, "Hebrew too (the Windows Hebrew checker \"fixed\" correct words; off is safer)");
-            y = AddOption(Settings.KeyNamesGuard, 22, y, "Names guard: leave a lowercase unknown word alone right after another unknown word");
+            y = AddOption(Settings.KeyAutoCorrect, 22, y, "Auto-correct typos with a typing signature (swapped or neighbouring letters)");
+            y = AddOption(Settings.KeyAggressive, 44, y, "Aggressive: accept any one-letter suggestion (risky: postgres → postures)");
+            y = AddOption(Settings.KeyHebrew, 44, y, "Hebrew too (the Windows Hebrew checker is unreliable)");
+            y = AddOption(Settings.KeyNamesGuard, 22, y, "Names guard: skip an unknown lowercase word right after another unknown word");
 
             _startup.Text = "Start with Windows (minimized to tray)";
             _startup.AutoSize = true;
