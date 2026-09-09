@@ -17,6 +17,12 @@ namespace LangFixer
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string AppName = "LangFixer";
         private const string DashboardTitle = "LangFixer";
+        private const string HostTitle = "LangFixer.MessageWindow";
+        /// <summary>Posted by a second instance to the hidden host window: "show the dashboard".</summary>
+        private static readonly int WmShowDashboard = RegisterWindowMessage("LangFixer.ShowDashboard");
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int RegisterWindowMessage(string name);
 
         private readonly Layouts _layouts;
         private readonly Dictionaries _dict;
@@ -53,7 +59,7 @@ namespace LangFixer
             Log("start: en=" + _layouts.English.ToString("X") + " he=" + _layouts.Hebrew.ToString("X")
                 + " dictEn=" + _dict.EnglishAvailable + " dictHe=" + _dict.HebrewAvailable + " " + _dict.InitError);
 
-            Text = AppName + ".MessageWindow";
+            Text = HostTitle;
             ShowInTaskbar = false;
             WindowState = FormWindowState.Minimized;
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
@@ -146,6 +152,10 @@ namespace LangFixer
             if (!_hotkeyOk) warn += "Ctrl+Alt+H hotkey is taken by another program. ";
             if (warn.Length > 0)
                 _tray.ShowBalloonTip(8000, AppName, warn.Trim(), ToolTipIcon.Warning);
+            else if (_startMinimized)
+                _tray.ShowBalloonTip(6000, AppName + " is running",
+                    "It lives in the tray (look under the ^ arrow). Click the blue אA icon or run LangFixer.exe again to open the dashboard.",
+                    ToolTipIcon.Info);
         }
 
         private void ShowDashboard()
@@ -155,6 +165,19 @@ namespace LangFixer
             _dashboard.Show();
             if (_dashboard.WindowState == FormWindowState.Minimized) _dashboard.WindowState = FormWindowState.Normal;
             _dashboard.Activate();
+            if (Native.GetForegroundWindow() == _dashboard.Handle) return;
+            // Another app (often a maximized chat window) holds the foreground lock. Tap Alt (with Ctrl inside so no
+            // menu opens; stamped as our own input so the hook ignores it), then take the foreground and flash TopMost.
+            Fixer.Send(new System.Collections.Generic.List<Native.INPUT>
+            {
+                Fixer.Vk(Native.VK_MENU, false, Native.InjectMarker), Fixer.Vk(Native.VK_CONTROL, false, Native.InjectMarker),
+                Fixer.Vk(Native.VK_CONTROL, true, Native.InjectMarker), Fixer.Vk(Native.VK_MENU, true, Native.InjectMarker)
+            });
+            SetForegroundWindow(_dashboard.Handle);
+            _dashboard.TopMost = true;
+            _dashboard.BringToFront();
+            _dashboard.Activate();
+            _dashboard.TopMost = false;
         }
 
         private void SetAutoCorrect(bool on) { SetOption(Settings.KeyAutoCorrect, on); }
@@ -240,6 +263,11 @@ namespace LangFixer
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == WmShowDashboard)
+            {
+                ShowDashboard();
+                return;
+            }
             if (m.Msg == Native.WM_HOTKEY && m.WParam.ToInt32() == HotkeyId)
             {
                 Log("hotkey pressed");
@@ -285,7 +313,10 @@ namespace LangFixer
             {
                 if (!created)
                 {
-                    // Already running: bring its dashboard forward instead of starting a second copy.
+                    // Already running: ask it to show its dashboard instead of starting a second copy. The
+                    // dashboard window may not exist yet (started minimized), so signal the always-present host.
+                    IntPtr host = FindWindow(null, HostTitle);
+                    if (host != IntPtr.Zero) { Native.PostMessage(host, (uint)WmShowDashboard, IntPtr.Zero, IntPtr.Zero); return; }
                     IntPtr h = FindWindow(null, DashboardTitle);
                     if (h != IntPtr.Zero) { ShowWindow(h, 9); SetForegroundWindow(h); }
                     return;
