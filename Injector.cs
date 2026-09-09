@@ -125,6 +125,9 @@ namespace LangFixer
                     PressKey((int)h.Vk, (ushort)h.Scan, h.Shift, ReplayMarker);
                     Thread.Sleep(KeyDelayMs);
                 }
+                // Replayed keys reach the hook asynchronously; a replayed separator may enqueue a new job.
+                // Give them time to land before deciding whether we are idle.
+                Thread.Sleep(30);
             }
         }
 
@@ -177,10 +180,17 @@ namespace LangFixer
             bool switched = false;
             if (job.Hkl != IntPtr.Zero)
             {
-                Fixer.SwitchLayout(job.Hkl);
-                switched = WaitForLayout(job.Hkl);
-                if (!switched) _log("layout switch not confirmed within " + LayoutSwitchTimeoutMs + "ms; falling back to Unicode input");
-                else Thread.Sleep(LayoutSettleMs);
+                if (Layouts.ForegroundHkl() == job.Hkl)
+                {
+                    switched = true; // already there (spelling fix, or undo after a failed switch): no reset window to wait out
+                }
+                else
+                {
+                    Fixer.SwitchLayout(job.Hkl);
+                    switched = WaitForLayout(job.Hkl);
+                    if (!switched) _log("layout switch not confirmed within " + LayoutSwitchTimeoutMs + "ms; falling back to Unicode input");
+                    else Thread.Sleep(LayoutSettleMs);
+                }
             }
 
             // Replay the original keys as long as they render exactly the wanted text in the new layout.

@@ -149,6 +149,11 @@ namespace LangFixer
             DecideText(acDet, layouts, "hwllo", Lang.English, "hello", "autocorrect ON: hwllo -> hello (w is next to e: typo signature)");
             Check(Detector.AreNeighbourKeys('w', 'e') && Detector.AreNeighbourKeys('s', 'w') && !Detector.AreNeighbourKeys('o', 'a'), "QWERTY neighbour map");
             Check(Detector.OneEdit("teh", "the") == Detector.EditKind.Transposition, "teh/the is a transposition");
+            Check(!Detector.AcceptableSuggestion("heald", "Heald") && !Detector.AcceptableSuggestion("hello", "Hello")
+                && Detector.AcceptableSuggestion("teh", "the") && Detector.AcceptableSuggestion("Teh", "The"),
+                "suggestions: capitalized/case-only rejected for lowercase words (live bug: heald -> Heald)");
+            var dh = acDet.Decide(Lang.English, "heald", "heald", Layouts.Render(Keys("heald", layouts.English), layouts.Hebrew));
+            Check(!dh.Fix || dh.Text != "Heald", "autocorrect ON: heald never becomes Heald -> " + (dh.Fix ? "'" + dh.Text + "'" : "keep"));
             DecideText(acDet, layouts, "hello", Lang.Hebrew, "hello", "autocorrect ON: hello typed in Hebrew still becomes hello");
             Decide(acDet, layouts, "hello", Lang.English, false, "autocorrect ON: valid word untouched");
 

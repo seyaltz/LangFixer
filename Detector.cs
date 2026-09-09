@@ -106,6 +106,7 @@ namespace LangFixer
             string en = TrimTrailing(english);
             if (_settings.IsIgnoredWord(en)) return Decision.Keep("ignored word");
             if (_dict.IsValidEnglish(en)) return Decision.Keep("valid English" + Err());
+            if (_dict.LastError.Length > 0) return Decision.Keep("dictionary fault, keeping" + Err()); // never convert on a checker failure
             string trail = english.Substring(en.Length);
 
             // With autocorrect on, a typo with a typing signature (swapped adjacent letters, a neighbouring key hit)
@@ -147,6 +148,7 @@ namespace LangFixer
             string he = TrimTrailingAligned(hebrew, english);
             if (_settings.IsIgnoredWord(he)) return Decision.Keep("ignored word");
             if (he.Length >= 1 && _dict.IsValidHebrew(he)) return Decision.Keep("valid Hebrew" + Err());
+            if (_dict.LastError.Length > 0) return Decision.Keep("dictionary fault, keeping" + Err());
 
             // Same priority as the English side: only a typo with a typing signature outranks a layout switch.
             string heTrail = hebrew.Substring(he.Length);
@@ -193,7 +195,7 @@ namespace LangFixer
 
             foreach (var s in _dict.Suggest(lang, word))
             {
-                if (s == null || s == word || s.IndexOf(' ') >= 0) continue;
+                if (!AcceptableSuggestion(word, s)) continue;
                 EditKind kind = OneEdit(word, s);
                 if (kind == EditKind.None) continue;
                 strongTypo = kind == EditKind.Transposition
@@ -207,6 +209,18 @@ namespace LangFixer
         {
             bool strong;
             return TryAutoCorrect(lang, word, out strong);
+        }
+
+        /// <summary>
+        /// A suggestion may not be the word itself, contain a space, differ only by case, or be capitalized when the
+        /// typed word is not: the dictionary offers proper nouns ("heald" -> "Heald") and those are not typos.
+        /// </summary>
+        public static bool AcceptableSuggestion(string word, string s)
+        {
+            if (s == null || s.Length == 0 || s == word || s.IndexOf(' ') >= 0) return false;
+            if (string.Equals(s, word, StringComparison.OrdinalIgnoreCase)) return false;
+            if (char.IsUpper(s[0]) && !char.IsUpper(word[0])) return false;
+            return true;
         }
 
         public enum EditKind { None, Substitution, Transposition, Insertion, Deletion }

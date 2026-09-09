@@ -109,7 +109,8 @@ Rules on every physical key-down:
    the reason. If *fix*: **swallow the separator** (return 1 from the hook), enqueue a rewrite
    (5.7) with `backspaces = typed.Length`, `hkl = target layout`, `text`, `keys`, `sepVk`;
    `LastAction = Fixed{keys, typedLayout, fixedLayout, text, sepVk}`; increment the fix counter.
-7. Separator with an empty buffer, or other keys: as classified above.
+7. Separator with an empty buffer: **no-op** (buffer and undo state untouched, so Ctrl+Alt+H still
+   undoes after `word␣␣`; the undo then leaves the extra space). Other keys: as classified above.
 
 ### 5.2 Rendering
 
@@ -148,17 +149,19 @@ Structural rules (SpellCheck):
 en    = TrimTrailing(english)                 # if they meant English, trailing , . ; ' are punctuation
 if en in ignoreList            -> keep "ignored word"
 if IsValidEnglish(en)          -> keep "valid English"
+if the checker call failed     -> keep "dictionary fault"       # never convert on a checker failure
 trail = english[len(en):]
 corrected, strong = TryAutoCorrect(English, en)          # 5.5; null when autocorrect is off
 if corrected and strong        -> FIX English, text = corrected + trail   ("spelling (typo signature)")
 he = TrimTrailingAligned(hebrew, english)
-if len(he) < 3                 -> keep "Hebrew too short"        (see F6; still fall to autocorrect below)
-elif IsValidHebrew(he)         -> FIX Hebrew, text = hebrew
-elif trail != "" and len(trail) < len(hebrew):
-     hePrefix = TrimTrailing(hebrew[:len(hebrew)-len(trail)])   # they pressed the real , or . key after a Hebrew word
-     if len(hePrefix) >= 3 and IsValidHebrew(hePrefix) -> FIX Hebrew, text = hePrefix + trail
+tooShort = len(he) < 3                                   # F6: skip the Hebrew checks, do NOT return yet
+if not tooShort:
+    if IsValidHebrew(he)       -> FIX Hebrew, text = hebrew
+    elif trail != "" and len(trail) < len(hebrew):
+         hePrefix = TrimTrailing(hebrew[:len(hebrew)-len(trail)])   # they pressed the real , or . key after a Hebrew word
+         if len(hePrefix) >= 3 and IsValidHebrew(hePrefix) -> FIX Hebrew, text = hePrefix + trail
 if corrected                   -> FIX English, text = corrected + trail   ("spelling")
-keep "not Hebrew"
+keep (tooShort ? "Hebrew too short" : "not Hebrew")
 ```
 
 **Typed while Hebrew layout was active** (did they mean English?):
@@ -166,7 +169,8 @@ keep "not Hebrew"
 ```
 he = TrimTrailingAligned(hebrew, english)
 if he in ignoreList            -> keep
-if len(he) >= 1 and IsValidHebrew(he) -> keep "valid Hebrew"
+if IsValidHebrew(he)           -> keep "valid Hebrew"          # structurally needs len >= 2 anyway
+if the checker call failed     -> keep "dictionary fault"
 heTrail = hebrew[len(he):]
 corrected, strong = TryAutoCorrect(Hebrew, he)
 if corrected and strong        -> FIX Hebrew, text = corrected + heTrail
@@ -199,7 +203,10 @@ So `akuo,` → `שלום,` but `akuo/` → `שלום.` (the `/` key is a Hebrew 
   sentence-initial words are left alone). Hebrew: structurally Hebrew.
 - Ask the checker for suggestions (`ISpellChecker::Suggest`, up to 10). Take the **first** that is
   exactly one edit away (Damerau-Levenshtein 1: substitution, insertion, deletion, adjacent
-  transposition) and contains no space.
+  transposition) and is *acceptable*: not the word itself, no space, **not differing only by case,
+  and not capitalized when the typed word is lowercase**. The dictionary offers proper nouns
+  (`heald` → `Heald` happened live); those are not typos. The result is dictionary-order dependent
+  (`helo` lists `hello` before `help`); do not assume a particular suggestion beyond the vectors in 9.3.
 - `strong` = transposition, or (English) substitution by a **QWERTY neighbour**: rows
   `qwertyuiop / asdfghjkl / zxcvbnm`, two keys are neighbours when |row difference| ≤ 1 and
   |column difference| ≤ 1.
@@ -219,8 +226,9 @@ every handle creation (WinForms can recreate handles; unregister on handle destr
 1. Buffer non-empty → *force current word*: `other` = the layout opposite to the word's layout;
    `text = ForcedText(other, english, hebrew)`; rewrite with `backspaces = typed.Length`, no
    separator; `LastAction = Fixed`.
-2. Else `LastAction == Skipped` → *force last word*: same, but `backspaces = typed.Length + 1`
-   (the separator) and re-send the separator.
+2. Else `LastAction == Skipped` → *force last word*: same, but `backspaces = typed.Length + 1` and
+   re-send the separator **only if a separator was recorded** (a `Skipped` produced by undoing a
+   case-1 conversion has none; `+1` there would eat a user character).
 3. Else `LastAction == Fixed` → *undo*: rewrite with `backspaces = fixedText.Length (+1 if a
    separator was sent)`, `hkl = original layout`, `text = typed` (the original), `keys`, re-send
    the separator; add `TrimTrailing(typed)` to `ignore-words.txt`; clear the decision cache;
@@ -232,10 +240,12 @@ Runs on its own thread, one job at a time, from a queue. A job is
 `{backspaces, hkl, text, keys, separatorVk}`.
 
 1. **Wait until Ctrl, Alt, Shift and Win are all physically up** (poll `GetAsyncKeyState`, up to
-   1.5 s). A hotkey-triggered job starts while Ctrl+Alt are still held, and Alt+Backspace is Undo
-   in Notepad: the first backspace was being eaten.
+   1.5 s, then proceed anyway rather than drop the job). A hotkey-triggered job starts while
+   Ctrl+Alt are still held, and Alt+Backspace is Undo in Notepad: the first backspace was being eaten.
 2. Send `backspaces` × (Backspace down, up) in one `SendInput` batch. Sleep ~8 ms.
-3. If `hkl` given: post `WM_INPUTLANGCHANGEREQUEST` (0x0050, wParam 0, lParam = hkl) to the focus
+3. If `hkl` given and the focus thread is **already** on `hkl` (a spelling fix; an undo after a
+   failed switch): skip this whole step, no reset window occurs. Otherwise post
+   `WM_INPUTLANGCHANGEREQUEST` (0x0050, wParam 0, lParam = hkl) to the focus
    window (`GetGUIThreadInfo(threadOfForeground).hwndFocus`) **and** to the foreground window.
    Then **poll until the focus thread's layout equals `hkl`** (5 ms steps, ≤ 300 ms). If it never
    does, fall back to Unicode input for the whole text. If it does, **sleep 120 ms more**: the text
@@ -254,8 +264,9 @@ Runs on its own thread, one job at a time, from a queue. A job is
 **Holding user keys**: while a job is running (`busy` flag), the hook parks any *physical*
 non-modifier key-down (`vk, scan, shift`) and swallows it; the matching key-up is swallowed too.
 After the job, the injector replays the parked keys in order with `dwExtraInfo = ReplayMarker`
-(a second fixed value) and only then clears `busy` (re-checking that no new job and no new parked
-keys arrived). The hook treats `ReplayMarker` events as physical typing (they go through the
+(a second fixed value), **sleeps ~30 ms** (replayed keys reach the hook asynchronously and a
+replayed separator may enqueue a new job), and only then clears `busy` if no new job and no new
+parked keys arrived, looping otherwise. The hook treats `ReplayMarker` events as physical typing (they go through the
 Engine), `InjectMarker` events as invisible, and other injected events (`LLKHF_INJECTED`) as
 invisible unless `--accept-injected`.
 
@@ -266,7 +277,9 @@ with `RPC_E_CANTCALLOUT_ININPUTSYNCCALL (0x8001010D)`. Therefore:
 
 - A dedicated thread (`SetApartmentState(MTA)`) creates the spell checkers and owns the Detector.
 - Requests `{typedIn, typed, english, hebrew}` go through a blocking queue; results are cached by
-  that 4-tuple (cap ~2000 entries; clear on ignore-list change).
+  that 4-tuple (cap ~2000 entries, clear-all when full; clear on ignore-list change). If `Decide`
+  arrives while a `Prefetch` for the same key is in flight, wait on that request instead of
+  computing twice.
 - `Prefetch(...)`: enqueue without waiting, called on every word key so the verdict for the word so
   far is ready. `Decide(..., timeoutMs)`: cache hit → immediate; else enqueue and wait on the
   request's event; on timeout → keep ("dictionary timeout").
@@ -296,7 +309,7 @@ differs, `tid = thread of hwndFocus`; `GetKeyboardLayout(tid)`.
   webstorm64.exe datagrip64.exe goland64.exe clion64.exe dbeaver.exe pgAdmin4.exe cursor.exe
   windbg.exe`. Do **not** exclude general text editors (Notepad++, Sublime): people write notes there.
 - `settings.txt` — `key=value` lines; today only `autocorrect=0|1`.
-- `log.txt` — only with `--debug`: `HH:mm:ss.fff auto-fix: <reason> [process]` /
+- `log.txt` — only with `--debug`: `HH:mm:ss.fff auto-fix: <reason> 'typed' -> 'text' [process]` /
   `keep: typed='…' en='…' he='…' typedIn=… -> <reason> [process]`, plus startup lines
   (layouts found, dictionaries available, hooks installed, hotkey registered, hwnd).
 
@@ -317,8 +330,10 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
   button, dictionary + layout status, words-fixed counter, live decision feed (last ~200 log
   lines, refreshed by a timer), checkboxes for autocorrect and start with Windows, buttons for the
   two lists and Exit. Closing hides to the tray; Exit quits.
-- First launch shows the dashboard; `--minimized` starts in the tray. Launching a second instance
-  finds the first one's dashboard window and brings it to the front, then exits.
+- First launch shows the dashboard; `--minimized` starts in the tray. The dashboard's caption is
+  exactly `LangFixer` (give the hidden form a different caption). A second instance finds it with
+  `FindWindow(null, "LangFixer")`, restores and foregrounds it (or posts a
+  `RegisterWindowMessage`-registered message the first instance handles), then exits.
 - Startup balloon tip when a layout or a spell checker is missing, or the hotkey is taken.
 
 ## 8. Windows API cheat-sheet
@@ -349,8 +364,16 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
   x64: `uint cbSize, flags; IntPtr ×6; RECT`), `PostMessage(hwnd, 0x0050, 0, hkl)`.
 - Hotkey: `RegisterHotKey/UnregisterHotKey`; `WM_HOTKEY = 0x0312`.
 - Process name: `GetWindowThreadProcessId` → `OpenProcess(0x1000)` → `QueryFullProcessImageName`.
-- Console output from a `winexe` for `--test`: `AttachConsole(-1)` and also write the report to
-  `test-output.txt` next to the exe.
+- Console output from a `winexe` for `--test`: `AttachConsole(-1)`, then re-open stdout
+  (`Console.SetOut(new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true })`) or
+  nothing appears; PowerShell returns immediately because it is a GUI exe, so scripts should use
+  `Start-Process -Wait` and read `test-output.txt`, which the test also writes next to the exe.
+- `IEnumString`: use `System.Runtime.InteropServices.ComTypes.IEnumString` (`Next(1, string[1],
+  IntPtr.Zero)` until it returns `S_FALSE`). If `Check()` itself throws, treat the word as
+  **unknown** and keep (section 5.3); a checker fault must never cause a conversion.
+- Caps Lock inside the hook: `GetKeyState(VK_CAPITAL) & 1` on the hook thread works in practice.
+- The UI Automation assemblies for the driver are **not** in the Framework root but in its `WPF\`
+  subfolder: `%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\WPF\{UIAutomationClient,UIAutomationTypes,WindowsBase}.dll`.
 
 ## 9. Acceptance tests
 
@@ -402,17 +425,21 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 | autocorrect on: `akuo` | English | fix → `שלום` (not `akua`) | layout wins over weak typo |
 | autocorrect on: `thl` | English | fix → `איך` (not `the`) | |
 | autocorrect on: `gradle`, `Teh`, `hello` | English | keep | ignored / capitalized / valid |
+| autocorrect on: `heald` | English | never → `Heald` | capitalized suggestion rejected (may keep or → `heal`) |
+| `AcceptableSuggestion`: (heald, Heald) no; (hello, Hello) no; (teh, the) yes; (Teh, The) yes | | | |
 | autocorrect on: `hello` | Hebrew | fix → `hello` | |
 | `ForcedText`: `akuo,`→`שלום,`, `akuo/`→`שלום.`, `akuo`→`שלום`, to English `hello,`→`hello,` | | | |
 | `OneEdit`: teh/the transposition; helo/hello insertion; helllo/hello deletion; hallo/hello substitution; hxllx/hello none; identical none | | | |
 | QWERTY neighbours: (w,e) yes, (s,w) yes, (o,a) no | | | |
 | Sweep: with the 3-letter minimum, **0 of 676** two-letter English-layout strings convert; with a 2-letter minimum, 159 do | | | |
-| DecisionService: `akuo` via the worker thread → fix; a prefetched verdict is served with 0 ms wait | | | |
+| DecisionService: `akuo` via the worker thread → fix; after `Prefetch`, `Decide` is served **from the cache** (assert the cache hit, not a timing: the un-prefetched round trip is sub-millisecond too) | | | |
 
 ### 9.4 End-to-end in Notepad (driver)
 
 Start `LangFixer.exe --debug --accept-injected --minimized` with `LANGFIXER_HOME` pointing at a
-scratch folder containing `settings.txt` = `autocorrect=1`. The driver: launch `notepad.exe`
+scratch folder containing `settings.txt` = `autocorrect=1` (the harness script or the driver
+itself may do this). **Stop any other LangFixer instance first**: two hooks would both act.
+The driver: launch `notepad.exe`
 (Windows 11 Notepad is single-instance: find the window by class `Notepad` that becomes
 foreground, not by process id), Ctrl+N for a fresh tab, post the English layout, then type with
 `SendInput` (no marker, 40 ms per key) and read the document back through UI Automation
@@ -438,12 +465,12 @@ Ctrl+Alt+H -> back to "אנחנו "                         Hebrew
 hello⏎   -> + "hello\n"                                English
 teh␣     -> + "the "                                   English  (autocorrect)
 gradle␣  -> + "gradle "                                English
-Ctrl+Alt+H -> "gradle " becomes "ערשגךק "              (forced)
+Ctrl+Alt+H -> "gradle " becomes "ערשגךק "              Hebrew   (forced conversion posts the other layout)
 Ctrl+Alt+H -> back to "gradle "                        English
 akuo, then Ctrl+Alt+H (no separator) -> + "שלום,"      Hebrew
 ```
 
-40 checks; all must pass on an idle desktop.
+40 checks = 20 steps × (document text + focus-thread layout); all must pass on an idle desktop.
 
 ## 10. Recommended order of work (TDD)
 
