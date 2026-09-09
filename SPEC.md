@@ -154,7 +154,8 @@ trail = english[len(en):]
 he = TrimTrailingAligned(hebrew, english)
 heValid = len(he) >= 3 and IsValidHebrew(he)
 lowercaseUnknown = IsStructurallyEnglish(en) and en is all lowercase
-if names_guard and prevUnknown and lowercaseUnknown -> keep "names guard", Unknown = true
+if names_guard and prevUnknown and lowercaseUnknown and not (heValid and len(he) >= 4)
+                               -> keep "names guard", Unknown = true      # "tal" after a name stays; "eurv" (קורה) still converts
 corrected, strong = TryAutoCorrect(English, en)          # 5.5; null when autocorrect is off
 # priority, measured on real typing:
 if heValid and len(he) >= 4    -> FIX Hebrew, text = hebrew            # "eurv" is קורה, not "eruv"

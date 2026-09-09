@@ -157,6 +157,9 @@ namespace LangFixer
             var gk = Keys("tal", layouts.English);
             var gd = acDet.Decide(Lang.English, Layouts.Typed(gk), Layouts.Render(gk, layouts.English), Layouts.Render(gk, layouts.Hebrew), true);
             Check(!gd.Fix, "names guard: tal after an unknown word -> keep  [" + gd.Reason + "]");
+            var ek = Keys("eurv", layouts.English);
+            var ed = acDet.Decide(Lang.English, Layouts.Typed(ek), Layouts.Render(ek, layouts.English), Layouts.Render(ek, layouts.Hebrew), true);
+            Check(ed.Fix && ed.Text == "קורה", "names guard exempts a 4-letter valid Hebrew word: eurv after 'postgres' -> kore  [" + ed.Reason + "]");
             var pk = Keys("webguru", layouts.English);
             var pd = acDet.Decide(Lang.English, Layouts.Typed(pk), Layouts.Render(pk, layouts.English), Layouts.Render(pk, layouts.Hebrew), false);
             Check(!pd.Fix && pd.Unknown, "webguru alone -> keep and flagged unknown (feeds the guard)  [" + pd.Reason + "]");

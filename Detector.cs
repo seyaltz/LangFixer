@@ -127,8 +127,10 @@ namespace LangFixer
 
             // Names guard: a lowercase word that fails both dictionaries, right after another such word, is almost
             // always a name ("tal ayash") or an identifier, not a layout mistake or a typo. Leave it alone.
+            // A valid Hebrew word of 4+ letters is strong evidence on its own and is exempt ("postgres קורה");
+            // the guard is for the short collisions like "tal" (אשך).
             bool lowercaseUnknown = Dictionaries.IsStructurallyEnglish(en) && en == en.ToLowerInvariant();
-            if (_settings.NamesGuard && prevUnknown && lowercaseUnknown)
+            if (_settings.NamesGuard && prevUnknown && lowercaseUnknown && !(heValid && he.Length >= LayoutOverSpellingLength))
                 return Decision.KeepUnknown("names guard: unknown word after an unknown word");
 
             bool strongTypo;
