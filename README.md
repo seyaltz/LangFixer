@@ -74,22 +74,26 @@ Implementation notes that cost real debugging time:
   punctuation is only trimmed when the key is punctuation in both layouts, else `ים` (sea)
   passes the dictionary and the word is missed.
 
-## Spelling autocorrect (optional, off by default)
+## Options (dashboard checkboxes, saved in `settings.txt`)
 
-The dashboard checkbox **Auto-correct spelling mistakes** turns on dictionary-based autocorrect
-for words that are *not* a layout mistake. It is deliberately narrow:
+The defaults are the conservative set measured on a full day of real typing (850 words judged,
+98 fixed; see `docs/`):
 
-- the word must be letters only, at least 3 long, not capitalized (names) and not all-caps;
-- the Windows spell checker's suggestion is taken only if it is exactly one edit away: one
-  wrong, missing, extra or swapped letter (`teh` → `the`, `helo` → `hello`, `hwllo` → `hello`);
-- a correction outranks a layout switch only when the edit has a typing signature, a swapped
-  adjacent pair or a neighbouring key on the QWERTY board. Otherwise the layout fix wins, so
-  `akuo` still becomes שלום and not the dictionary's `akua`, and `thl` becomes איך, not `the`;
-- Ctrl+Alt+H undoes a correction and adds the original word to the ignore list.
+| Option | Default | What it does |
+|---|---|---|
+| Auto-correct typos with a typing signature | off | Takes the dictionary's first suggestion only when the typo is a swapped adjacent pair or a neighbouring key (`teh` → `the`, `hwllo` → `hello`, `yesterady` → `yesterday`). |
+| Aggressive | off | Also takes any other one-letter suggestion. Real results with it on: `postgres` → `postures`, `poull` → `poll`, `deplink` → `delink`. |
+| Hebrew too | off | Autocorrect Hebrew as well. The Windows Hebrew checker "corrected" correct words (העלתי, השתחזר), so it is off. |
+| Names guard | on | A lowercase word that fails both dictionaries, right after another such word, is left alone: `tal ayash` is a name, not two mistakes. |
 
-Hebrew autocorrect uses the same rules, but the Windows Hebrew checker is permissive (it accepts
-`שלוום`) and its suggestions are weak, so it rarely triggers. **Grammar is not attempted**: a
-dictionary cannot judge grammar; that needs a language model.
+Rules that always apply: words are at least 3 letters, never capitalized or all-caps, suggestions
+that only change case or add punctuation are rejected (`heald` → `Heald`, `etc` → `etc.`), and a
+valid word of 4+ letters in the *other* layout beats any spelling suggestion (`eurv` is קורה, not
+`eruv`). Ctrl+Alt+H undoes any correction and adds the word to the ignore list.
+
+Known limit: a name that happens to have a typo signature and stands alone (`ayash` → `ayahs`) is
+still corrected once; undo teaches it. **Grammar is not attempted**: a dictionary cannot judge
+grammar; that needs a language model.
 
 ## Hotkey: Ctrl+Alt+H
 

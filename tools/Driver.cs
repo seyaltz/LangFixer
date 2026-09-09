@@ -93,6 +93,7 @@ internal static class Driver
 
             // Spelling autocorrect (the test profile has autocorrect=1)
             Step("teh ", "the ", LangFixer.Lang.English, "autocorrect: teh -> the, layout unchanged");
+            Step("postgres ", "postgres ", LangFixer.Lang.English, "strict autocorrect: postgres stays (was 'postures')");
             Step("gradle ", "gradle ", LangFixer.Lang.English, "autocorrect leaves ignored words alone");
             Chord(new[] { Native.VK_CONTROL, Native.VK_MENU }, 'H'); // undo nothing? last word was kept; force-converts it instead
             Thread.Sleep(900);
@@ -103,6 +104,11 @@ internal static class Driver
             _expected = _expected.Substring(0, _expected.Length - "ערשגךק ".Length) + "gradle ";
             Check(Text() == _expected, "and undoes it again -> got '" + Text() + "'");
             Check(Lang() == LangFixer.Lang.English, "   layout English again");
+
+            Step("eurv ", "קורה ", LangFixer.Lang.Hebrew, "layout beats spelling: eurv -> kore (not 'eruv')");
+            Fixer.SwitchLayout(_layouts.English);
+            Thread.Sleep(500);
+            Check(Lang() == LangFixer.Lang.English, "precondition for the last test: English layout");
 
             Type("akuo,"); // no separator yet
             Chord(new[] { Native.VK_CONTROL, Native.VK_MENU }, 'H'); // force current word

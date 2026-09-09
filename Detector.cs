@@ -8,12 +8,19 @@ namespace LangFixer
         public Lang Target;
         public string Text = "";
         public string Reason = "";
+        /// <summary>Kept, and the word fails BOTH dictionaries: the signature of a name or an identifier. Feeds the names guard for the next word.</summary>
+        public bool Unknown;
 
         public static readonly Decision None = new Decision();
 
         public static Decision Keep(string reason)
         {
             return new Decision { Reason = reason };
+        }
+
+        public static Decision KeepUnknown(string reason)
+        {
+            return new Decision { Reason = reason, Unknown = true };
         }
 
         public static Decision To(Lang target, string text, string reason)
@@ -37,6 +44,8 @@ namespace LangFixer
         public int MinEnglishLength = 2;
         /// <summary>Shortest word we auto-correct for spelling.</summary>
         public int MinAutoCorrectLength = 3;
+        /// <summary>A valid other-layout word at least this long beats a spelling suggestion ("eurv" is קורה, not "eruv").</summary>
+        public int LayoutOverSpellingLength = 4;
 
         private readonly Dictionaries _dict;
         private readonly Settings _settings;
@@ -87,11 +96,12 @@ namespace LangFixer
         /// <param name="typed">What actually appeared on screen.</param>
         /// <param name="english">The keys rendered under the English layout.</param>
         /// <param name="hebrew">The keys rendered under the Hebrew layout.</param>
-        public Decision Decide(Lang typedIn, string typed, string english, string hebrew)
+        /// <param name="prevUnknown">The previous word was kept because it fails both dictionaries (names guard input).</param>
+        public Decision Decide(Lang typedIn, string typed, string english, string hebrew, bool prevUnknown = false)
         {
             Decision d;
-            if (typedIn == Lang.English) d = EnglishLayout(english, hebrew);
-            else if (typedIn == Lang.Hebrew) d = HebrewLayout(english, hebrew);
+            if (typedIn == Lang.English) d = EnglishLayout(english, hebrew, prevUnknown);
+            else if (typedIn == Lang.Hebrew) d = HebrewLayout(english, hebrew, prevUnknown);
             else return Decision.None;
             // Shift/Caps in the Hebrew layout already produce Latin letters (acronyms inside Hebrew text):
             // rewriting them to the identical text would only flip the layout under the user's hands.
@@ -100,7 +110,7 @@ namespace LangFixer
         }
 
         // Typed while the English layout was active: did they mean Hebrew?
-        private Decision EnglishLayout(string english, string hebrew)
+        private Decision EnglishLayout(string english, string hebrew, bool prevUnknown)
         {
             // If they meant English, trailing , . ; ' are punctuation: plain trim for the English check.
             string en = TrimTrailing(english);
@@ -109,23 +119,33 @@ namespace LangFixer
             if (_dict.LastError.Length > 0) return Decision.Keep("dictionary fault, keeping" + Err()); // never convert on a checker failure
             string trail = english.Substring(en.Length);
 
-            // With autocorrect on, a typo with a typing signature (swapped adjacent letters, a neighbouring key hit)
-            // outranks a layout switch: the Hebrew checker is permissive ("teh" renders as אקי, which it accepts),
-            // and "teh" is far more often "the". Other one-edit suggestions only apply when no layout fix exists,
-            // otherwise "akuo" would become "akua" instead of שלום.
-            bool strongTypo;
-            string corrected = TryAutoCorrect(Lang.English, en, out strongTypo);
-            if (corrected != null && strongTypo)
-                return Decision.To(Lang.English, corrected + trail, "spelling (typo signature): '" + en + "' -> '" + corrected + "'");
-
             // If they meant Hebrew, only keys that are punctuation in both layouts (' and / give Hebrew comma
             // and period) are punctuation; the W key's geresh stays part of the word.
             string he = TrimTrailingAligned(hebrew, english);
-            string heVerdict;
-            if (he.Length < MinHebrewLength) heVerdict = "Hebrew too short";
-            else if (_dict.IsValidHebrew(he))
+            bool heValid = he.Length >= MinHebrewLength && _dict.IsValidHebrew(he);
+            string heVerdict = he.Length < MinHebrewLength ? "Hebrew too short" : heValid ? "" : "not Hebrew" + Err();
+
+            // Names guard: a lowercase word that fails both dictionaries, right after another such word, is almost
+            // always a name ("tal ayash") or an identifier, not a layout mistake or a typo. Leave it alone.
+            bool lowercaseUnknown = Dictionaries.IsStructurallyEnglish(en) && en == en.ToLowerInvariant();
+            if (_settings.NamesGuard && prevUnknown && lowercaseUnknown)
+                return Decision.KeepUnknown("names guard: unknown word after an unknown word");
+
+            bool strongTypo;
+            string corrected = TryAutoCorrect(Lang.English, en, out strongTypo);
+
+            // Priority, learned from a day of real typing:
+            //  1. a valid Hebrew word of 4+ letters beats any spelling suggestion ("eurv" is קורה, not "eruv");
+            //  2. a typo with a typing signature (swapped adjacent letters, neighbouring key) beats a short Hebrew
+            //     word: the Hebrew checker is permissive ("teh" renders as אקי, which it accepts);
+            //  3. a 3-letter valid Hebrew word;
+            //  4. a weak spelling suggestion (only in aggressive mode) when nothing else applies.
+            if (heValid && he.Length >= LayoutOverSpellingLength)
                 return Decision.To(Lang.Hebrew, hebrew, "'" + en + "' is not English, '" + he + "' is Hebrew");
-            else heVerdict = "not Hebrew" + Err();
+            if (corrected != null && strongTypo)
+                return Decision.To(Lang.English, corrected + trail, "spelling (typo signature): '" + en + "' -> '" + corrected + "'");
+            if (heValid)
+                return Decision.To(Lang.Hebrew, hebrew, "'" + en + "' is not English, '" + he + "' is Hebrew");
 
             // They may have pressed the real , or . key after the Hebrew word: strip that trailing
             // English punctuation (one key = one char in both layouts here) and try again.
@@ -138,11 +158,12 @@ namespace LangFixer
 
             if (corrected != null)
                 return Decision.To(Lang.English, corrected + trail, "spelling: '" + en + "' -> '" + corrected + "'");
-            return Decision.Keep(heVerdict);
+            // Fails both dictionaries (and is not merely too short): remember it for the names guard.
+            return lowercaseUnknown && he.Length >= MinHebrewLength ? Decision.KeepUnknown(heVerdict) : Decision.Keep(heVerdict);
         }
 
         // Typed while the Hebrew layout was active: did they mean English?
-        private Decision HebrewLayout(string english, string hebrew)
+        private Decision HebrewLayout(string english, string hebrew, bool prevUnknown)
         {
             // Judge the Hebrew with aligned trimming so "how" (ים') is not mistaken for the word ים.
             string he = TrimTrailingAligned(hebrew, english);
@@ -150,27 +171,31 @@ namespace LangFixer
             if (he.Length >= 1 && _dict.IsValidHebrew(he)) return Decision.Keep("valid Hebrew" + Err());
             if (_dict.LastError.Length > 0) return Decision.Keep("dictionary fault, keeping" + Err());
 
-            // Same priority as the English side: only a typo with a typing signature outranks a layout switch.
-            string heTrail = hebrew.Substring(he.Length);
-            bool strongTypo;
-            string corrected = TryAutoCorrect(Lang.Hebrew, he, out strongTypo);
-            if (corrected != null && strongTypo)
-                return Decision.To(Lang.Hebrew, corrected + heTrail, "spelling (typo signature): '" + he + "' -> '" + corrected + "'");
-
             // If they meant English, a trailing , . ; ' is punctuation ("hello," typed in Hebrew).
             string en = TrimTrailing(english);
+            bool enValid = en.Length >= MinEnglishLength && _dict.IsValidEnglish(en);
+
+            string heTrail = hebrew.Substring(he.Length);
+            bool strongTypo = false;
+            string corrected = null;
+            // Hebrew slang after Hebrew slang: the names guard only withholds autocorrect here; English typed in the
+            // Hebrew layout is strong evidence on its own and is still fixed.
+            if (!(_settings.NamesGuard && prevUnknown)) corrected = TryAutoCorrect(Lang.Hebrew, he, out strongTypo);
+            if (corrected == null) strongTypo = false;
+
+            if (enValid && en.Length >= LayoutOverSpellingLength)
+                return Decision.To(Lang.English, english, "'" + he + "' is not Hebrew, '" + en + "' is English");
+            if (corrected != null && strongTypo)
+                return Decision.To(Lang.Hebrew, corrected + heTrail, "spelling (typo signature): '" + he + "' -> '" + corrected + "'");
             // "I" and "a" are the only one-letter English words; their Hebrew-layout renderings (ן, ש) are never words on their own.
             if (en == "i" || en == "I" || en == "a" || en == "A")
                 return Decision.To(Lang.English, english, "'" + he + "' is not Hebrew, '" + en + "' is a one-letter English word");
-            string enVerdict;
-            if (en.Length < MinEnglishLength) enVerdict = "English too short";
-            else if (_dict.IsValidEnglish(en))
+            if (enValid)
                 return Decision.To(Lang.English, english, "'" + he + "' is not Hebrew, '" + en + "' is English");
-            else enVerdict = "not English" + Err();
-
             if (corrected != null)
                 return Decision.To(Lang.Hebrew, corrected + heTrail, "spelling: '" + he + "' -> '" + corrected + "'");
-            return Decision.Keep(enVerdict);
+            string enVerdict = en.Length < MinEnglishLength ? "English too short" : "not English" + Err();
+            return en.Length >= MinEnglishLength && he.Length >= 2 ? Decision.KeepUnknown(enVerdict) : Decision.Keep(enVerdict);
         }
 
         /// <summary>
@@ -185,6 +210,7 @@ namespace LangFixer
         {
             strongTypo = false;
             if (!_settings.AutoCorrect) return null;
+            if (lang == Lang.Hebrew && !_settings.AutoCorrectHebrew) return null; // the Windows Hebrew checker "fixed" correct words
             if (word.Length < MinAutoCorrectLength) return null;
             if (lang == Lang.English)
             {
@@ -193,6 +219,8 @@ namespace LangFixer
             }
             else if (!Dictionaries.IsStructurallyHebrew(word)) return null;
 
+            // Only the dictionary's FIRST acceptable one-edit suggestion counts. Walking further would turn
+            // "helo" into "help" (a neighbour-key substitution) when "hello" was the obvious first choice.
             foreach (var s in _dict.Suggest(lang, word))
             {
                 if (!AcceptableSuggestion(word, s)) continue;
@@ -200,6 +228,9 @@ namespace LangFixer
                 if (kind == EditKind.None) continue;
                 strongTypo = kind == EditKind.Transposition
                     || (kind == EditKind.Substitution && lang == Lang.English && AreNeighbourKeys(word, s));
+                // A weak suggestion (any other single edit) produced "postures" for postgres and "poll" for pull
+                // in real use: it applies only when the user opted into aggressive mode.
+                if (!strongTypo && !_settings.AutoCorrectAggressive) return null;
                 return s;
             }
             return null;
@@ -220,7 +251,16 @@ namespace LangFixer
             if (s == null || s.Length == 0 || s == word || s.IndexOf(' ') >= 0) return false;
             if (string.Equals(s, word, StringComparison.OrdinalIgnoreCase)) return false;
             if (char.IsUpper(s[0]) && !char.IsUpper(word[0])) return false;
+            // "etc" -> "etc.": a suggestion that only adds or moves punctuation is not a spelling correction.
+            if (string.Equals(LettersOnly(s), LettersOnly(word), StringComparison.OrdinalIgnoreCase)) return false;
             return true;
+        }
+
+        private static string LettersOnly(string s)
+        {
+            var sb = new System.Text.StringBuilder(s.Length);
+            foreach (char c in s) if (char.IsLetter(c)) sb.Append(c);
+            return sb.ToString();
         }
 
         public enum EditKind { None, Substitution, Transposition, Insertion, Deletion }

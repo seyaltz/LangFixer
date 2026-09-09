@@ -104,7 +104,7 @@ namespace LangFixer
         private void BuildTray()
         {
             _icon = MakeIcon();
-            _dashboard = new DashboardForm(_engine, _settings, _dict, _layouts, _icon, SetEnabled, IsStartup, SetStartup, SetAutoCorrect);
+            _dashboard = new DashboardForm(_engine, _settings, _dict, _layouts, _icon, SetEnabled, IsStartup, SetStartup, SetOption);
             _dashboard.Text = DashboardTitle;
 
             var menu = new ContextMenu();
@@ -157,12 +157,15 @@ namespace LangFixer
             _dashboard.Activate();
         }
 
-        private void SetAutoCorrect(bool on)
+        private void SetAutoCorrect(bool on) { SetOption(Settings.KeyAutoCorrect, on); }
+
+        private void SetOption(string key, bool on)
         {
-            _settings.SetAutoCorrect(on);
-            _decisions.ClearCache(); // cached verdicts were computed under the old setting
-            if (_autoCorrectItem != null) _autoCorrectItem.Checked = on;
-            Log(on ? "spelling auto-correct on" : "spelling auto-correct off");
+            if (_settings.Get(key) == on) return;
+            _settings.Set(key, on);
+            _decisions.ClearCache(); // cached verdicts were computed under the old settings
+            if (_autoCorrectItem != null) _autoCorrectItem.Checked = _settings.AutoCorrect;
+            Log("option " + key + (on ? " on" : " off"));
             if (_dashboard != null) _dashboard.UpdateState();
         }
 

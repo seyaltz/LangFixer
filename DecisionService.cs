@@ -17,6 +17,7 @@ namespace LangFixer
         private sealed class Request
         {
             public Lang TypedIn;
+            public bool PrevUnknown;
             public string Typed;
             public string En;
             public string He;
@@ -56,44 +57,44 @@ namespace LangFixer
             _ready.Set();
             foreach (var r in _queue.GetConsumingEnumerable())
             {
-                try { r.Result = _detector.Decide(r.TypedIn, r.Typed, r.En, r.He); }
+                try { r.Result = _detector.Decide(r.TypedIn, r.Typed, r.En, r.He, r.PrevUnknown); }
                 catch (Exception ex) { r.Result = Decision.Keep("decision error: " + ex.Message); _log("decision error: " + ex); }
                 lock (_cacheLock)
                 {
                     if (_cache.Count > 2000) _cache.Clear();
-                    _cache[Key(r.TypedIn, r.Typed, r.En, r.He)] = r.Result;
+                    _cache[Key(r.TypedIn, r.Typed, r.En, r.He, r.PrevUnknown)] = r.Result;
                 }
                 r.Done.Set();
             }
         }
 
-        private static string Key(Lang typedIn, string typed, string en, string he)
+        private static string Key(Lang typedIn, string typed, string en, string he, bool prevUnknown)
         {
-            return (int)typedIn + "|" + typed + "|" + en + "|" + he;
+            return (int)typedIn + "|" + (prevUnknown ? "u" : "-") + "|" + typed + "|" + en + "|" + he;
         }
 
-        private Decision Cached(Lang typedIn, string typed, string en, string he)
+        private Decision Cached(Lang typedIn, string typed, string en, string he, bool prevUnknown)
         {
             lock (_cacheLock)
             {
                 Decision d;
-                return _cache.TryGetValue(Key(typedIn, typed, en, he), out d) ? d : null;
+                return _cache.TryGetValue(Key(typedIn, typed, en, he, prevUnknown), out d) ? d : null;
             }
         }
 
         /// <summary>Start computing a verdict for the word as typed so far; never blocks.</summary>
-        public void Prefetch(Lang typedIn, string typed, string en, string he)
+        public void Prefetch(Lang typedIn, string typed, string en, string he, bool prevUnknown)
         {
-            if (Cached(typedIn, typed, en, he) != null) return;
-            _queue.Add(new Request { TypedIn = typedIn, Typed = typed, En = en, He = he });
+            if (Cached(typedIn, typed, en, he, prevUnknown) != null) return;
+            _queue.Add(new Request { TypedIn = typedIn, Typed = typed, En = en, He = he, PrevUnknown = prevUnknown });
         }
 
         /// <summary>Verdict for a finished word. Waits at most <paramref name="timeoutMs"/>; on timeout the word is kept.</summary>
-        public Decision Decide(Lang typedIn, string typed, string en, string he, int timeoutMs)
+        public Decision Decide(Lang typedIn, string typed, string en, string he, bool prevUnknown, int timeoutMs)
         {
-            Decision cached = Cached(typedIn, typed, en, he);
+            Decision cached = Cached(typedIn, typed, en, he, prevUnknown);
             if (cached != null) return cached;
-            var r = new Request { TypedIn = typedIn, Typed = typed, En = en, He = he };
+            var r = new Request { TypedIn = typedIn, Typed = typed, En = en, He = he, PrevUnknown = prevUnknown };
             _queue.Add(r);
             if (r.Done.Wait(timeoutMs)) return r.Result;
             return Decision.Keep("dictionary timeout after " + timeoutMs + "ms");

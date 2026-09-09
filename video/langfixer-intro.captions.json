@@ -1,0 +1,146 @@
+[
+  {
+    "at": 0,
+    "text": "LangFixer",
+    "tone": "info",
+    "say": "LangFixer is a small Windows tray utility. When you type a word in the wrong keyboard layout, Hebrew on an English layout or English on a Hebrew one, it notices at the space, retypes the word in the language you meant, and switches the layout for you. This video shows how to get it, run it, and what it does, with a live demo."
+  },
+  {
+    "at": 9005,
+    "text": "The problem",
+    "tone": "info",
+    "say": "The same physical keys spell shalom on the Hebrew layout and a k u o on the English one. You only notice after the word is out. Then you delete it, switch the layout and type it again. LangFixer does those three steps for you, automatically, in any application."
+  },
+  {
+    "at": 17008,
+    "text": "Get it",
+    "tone": "info",
+    "say": "Three ways to get it. One: clone the repository and run build dot cmd. No SDK is needed, the C sharp compiler ships with every Windows machine. Two: download LangFixer one point zero dot zip from the releases page. Three: hand SPEC dot md to your own coding agent. The spec is complete; an independent agent rebuilt the program from it and passed all forty live checks."
+  },
+  {
+    "at": 29021,
+    "text": "Requirements",
+    "tone": "info",
+    "say": "Requirements: Windows ten or eleven, with the English and Hebrew layouts installed, and the basic typing feature for both languages, which provides the spell checkers. The exe is unsigned, so SmartScreen warns once; choose more info, run anyway, or build it yourself. On privacy: LangFixer keeps only the current word in memory, writes nothing but its own settings, and has no network code."
+  },
+  {
+    "at": 41030,
+    "text": "Run it",
+    "tone": "info",
+    "say": "Run LangFixer dot exe. The dashboard opens with the status, a start and stop button, the dictionaries it found, and a live feed of every decision. Tick start with Windows so it is always there. Closing the window hides it to the tray; the blue aleph A icon brings it back. Spelling autocorrect is optional and off by default. Everything it learns lives in three small text files in your local app data folder."
+  },
+  {
+    "at": 52045,
+    "text": "How it decides",
+    "tone": "info",
+    "say": "How it decides. It records the physical keys of the word, not the letters. At the space it renders those keys under both layouts and asks the Windows spell checkers about each rendering. It converts only when your rendering fails its own language and the other one passes. Then it deletes the word, switches the layout, and replays your keys so the application types it itself. Identifiers like gradle fail both dictionaries and are left alone, and two-letter words are never converted, because j s, t s and s h happen to spell real Hebrew words."
+  },
+  {
+    "at": 66060,
+    "text": "Hotkey and lists",
+    "tone": "info",
+    "say": "The hotkey, control alt H, does three things depending on context. While typing a word it converts it immediately. After a word that was kept, it converts that word. After a word that was fixed, it undoes the fix and adds the word to the ignore list, so it is never touched again. Auto-fix is off by default in terminals and IDEs, where most words are identifiers; both lists are plain text files you can edit."
+  },
+  {
+    "at": 77071,
+    "text": "Live demo",
+    "tone": "info",
+    "say": "Now a live demo, in a real Notepad, with real keyboard input."
+  },
+  {
+    "at": 83800,
+    "text": "Notepad, English layout. Typing \"akuo nv akunl\" as if writing Hebrew.",
+    "tone": "info",
+    "say": "Notepad, with the English layout active. I type a k u o, space, as if I were writing shalom in Hebrew."
+  },
+  {
+    "at": 86738,
+    "text": "The word was fixed at the space and the layout switched to Hebrew. The next words come out right.",
+    "tone": "info",
+    "say": "At the space the word became shalom and the layout switched to Hebrew, so the next two words come out right."
+  },
+  {
+    "at": 89367,
+    "text": "FAIL  שלום מה שלומך",
+    "tone": "info",
+    "say": "Fail."
+  },
+  {
+    "at": 90871,
+    "text": "Now \"hello\" while the layout is Hebrew.",
+    "tone": "info",
+    "say": "Now I type hello while the layout is still Hebrew."
+  },
+  {
+    "at": 93897,
+    "text": "FAIL  שלום מה שלומך hello",
+    "tone": "info",
+    "say": "Fail."
+  },
+  {
+    "at": 95409,
+    "text": "Ctrl+Alt+H undoes the last fix.",
+    "tone": "info",
+    "say": "Control alt H undoes the last fix and restores what I actually typed."
+  },
+  {
+    "at": 97769,
+    "text": "FAIL  שלום מה שלומך יקךךם",
+    "tone": "info",
+    "say": "Fail."
+  },
+  {
+    "at": 98969,
+    "text": "And again to redo.",
+    "tone": "info",
+    "say": "Pressing it again converts the word back."
+  },
+  {
+    "at": 100933,
+    "text": "FAIL  שלום מה שלומך hello",
+    "tone": "info",
+    "say": "Fail."
+  },
+  {
+    "at": 102137,
+    "text": "Autocorrect is on in this run: \"teh\" becomes \"the\".",
+    "tone": "info",
+    "say": "Spelling autocorrect is switched on for this run. I type t e h."
+  },
+  {
+    "at": 104896,
+    "text": "FAIL  שלום מה שלומך hello the",
+    "tone": "info",
+    "say": "Fail."
+  },
+  {
+    "at": 106410,
+    "text": "An identifier stays: \"gradle\".",
+    "tone": "info",
+    "say": "An identifier like gradle fails both dictionaries and is left alone."
+  },
+  {
+    "at": 109423,
+    "text": "FAIL  שלום מה שלומך hello the gradle",
+    "tone": "info",
+    "say": "Fail."
+  },
+  {
+    "at": 110627,
+    "text": "The dashboard shows every decision as it happens.",
+    "tone": "info",
+    "say": "The dashboard shows every decision as it happens: the word, both renderings, and why it was fixed or kept."
+  },
+  {
+    "at": 130333,
+    "text": "1 of 7 live checks passed",
+    "tone": "info",
+    "say": "1 of 7 live checks passed, each read back from Notepad rather than assumed."
+  },
+  {
+    "at": 139352,
+    "text": "github.com/seyaltz/LangFixer",
+    "tone": "info",
+    "say": "That is LangFixer. Clone it and run build dot cmd, download the release, or give the spec to your coding agent. It is MIT licensed, and the source, the spec, the tests and this video are all in the repository. And remember: control alt H undoes any fix you did not want."
+  }
+]

@@ -18,8 +18,19 @@ namespace LangFixer
         public readonly string ExcludedPath;
         public readonly string SettingsPath;
 
-        /// <summary>Auto-correct single-letter spelling mistakes from the dictionary's suggestions. Off by default.</summary>
+        /// <summary>Auto-correct typos with a typing signature (swapped adjacent letters, neighbouring key). Off by default.</summary>
         public volatile bool AutoCorrect;
+        /// <summary>Also accept any one-edit dictionary suggestion. Off by default: it turned postgres into postures.</summary>
+        public volatile bool AutoCorrectAggressive;
+        /// <summary>Autocorrect Hebrew too. Off by default: the Windows Hebrew checker "corrected" correct words.</summary>
+        public volatile bool AutoCorrectHebrew;
+        /// <summary>Leave a lowercase unknown word alone when it directly follows another unknown word (names). On by default.</summary>
+        public volatile bool NamesGuard = true;
+
+        public const string KeyAutoCorrect = "autocorrect";
+        public const string KeyAggressive = "autocorrect_aggressive";
+        public const string KeyHebrew = "autocorrect_hebrew";
+        public const string KeyNamesGuard = "names_guard";
 
         // Read from the dictionary worker thread, written from the UI thread: guard every access.
         private readonly object _lock = new object();
@@ -99,26 +110,59 @@ namespace LangFixer
                     if (eq <= 0 || line.StartsWith("#")) continue;
                     string key = line.Substring(0, eq).Trim();
                     string val = line.Substring(eq + 1).Trim();
-                    if (key.Equals("autocorrect", StringComparison.OrdinalIgnoreCase)) AutoCorrect = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    bool on = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
+                    if (key.Equals(KeyAutoCorrect, StringComparison.OrdinalIgnoreCase)) AutoCorrect = on;
+                    else if (key.Equals(KeyAggressive, StringComparison.OrdinalIgnoreCase)) AutoCorrectAggressive = on;
+                    else if (key.Equals(KeyHebrew, StringComparison.OrdinalIgnoreCase)) AutoCorrectHebrew = on;
+                    else if (key.Equals(KeyNamesGuard, StringComparison.OrdinalIgnoreCase)) NamesGuard = on;
                 }
             }
             catch { }
         }
 
-        public void SetAutoCorrect(bool on)
+        public bool Get(string key)
         {
-            AutoCorrect = on;
+            switch (key)
+            {
+                case KeyAutoCorrect: return AutoCorrect;
+                case KeyAggressive: return AutoCorrectAggressive;
+                case KeyHebrew: return AutoCorrectHebrew;
+                case KeyNamesGuard: return NamesGuard;
+            }
+            return false;
+        }
+
+        /// <summary>Set one option and persist all of them.</summary>
+        public void Set(string key, bool on)
+        {
+            switch (key)
+            {
+                case KeyAutoCorrect: AutoCorrect = on; break;
+                case KeyAggressive: AutoCorrectAggressive = on; break;
+                case KeyHebrew: AutoCorrectHebrew = on; break;
+                case KeyNamesGuard: NamesGuard = on; break;
+                default: return;
+            }
             if (SettingsPath == null) return;
             try
             {
                 File.WriteAllLines(SettingsPath, new[]
                 {
-                    "# LangFixer settings",
-                    "autocorrect=" + (on ? "1" : "0")
+                    "# LangFixer settings (1 = on, 0 = off)",
+                    "# autocorrect: fix typos with a typing signature (swapped or neighbouring letters)",
+                    KeyAutoCorrect + "=" + (AutoCorrect ? "1" : "0"),
+                    "# autocorrect_aggressive: also take any one-letter dictionary suggestion (turned postgres into postures)",
+                    KeyAggressive + "=" + (AutoCorrectAggressive ? "1" : "0"),
+                    "# autocorrect_hebrew: autocorrect Hebrew too (the Windows Hebrew checker is unreliable)",
+                    KeyHebrew + "=" + (AutoCorrectHebrew ? "1" : "0"),
+                    "# names_guard: leave a lowercase unknown word alone right after another unknown word",
+                    KeyNamesGuard + "=" + (NamesGuard ? "1" : "0")
                 }, Encoding.UTF8);
             }
             catch { }
         }
+
+        public void SetAutoCorrect(bool on) { Set(KeyAutoCorrect, on); }
 
         private static void Load(string path, HashSet<string> into)
         {

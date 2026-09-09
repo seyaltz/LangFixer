@@ -36,6 +36,8 @@ namespace LangFixer
         private bool _foregroundExcluded;
         private string _foregroundProcess = "";
         private LastAction _last;
+        /// <summary>The previous word in this window was kept because it fails both dictionaries (names guard).</summary>
+        private bool _prevUnknown;
 
         public bool Enabled = true;
         public int FixCount;
@@ -61,6 +63,7 @@ namespace LangFixer
         {
             Reset();
             _last = null;
+            _prevUnknown = false;
         }
 
         private static bool IsWordKey(uint vk)
@@ -145,7 +148,7 @@ namespace LangFixer
                 _buffer.Add(rec);
                 _last = null;
                 if (Enabled && !_foregroundExcluded && _layouts.Complete && !_tainted)
-                    _decisions.Prefetch(Layouts.LangOf(hkl), Layouts.Typed(_buffer), Layouts.Render(_buffer, _layouts.English), Layouts.Render(_buffer, _layouts.Hebrew));
+                    _decisions.Prefetch(Layouts.LangOf(hkl), Layouts.Typed(_buffer), Layouts.Render(_buffer, _layouts.English), Layouts.Render(_buffer, _layouts.Hebrew), _prevUnknown);
                 return false;
             }
 
@@ -170,13 +173,15 @@ namespace LangFixer
                 Lang typedIn = Layouts.LangOf(typedHkl);
                 string en = Layouts.Render(keys, _layouts.English);
                 string he = Layouts.Render(keys, _layouts.Hebrew);
-                Decision d = _foregroundExcluded ? Decision.None : _decisions.Decide(typedIn, Layouts.Typed(keys), en, he, DecisionTimeoutMs);
+                Decision d = _foregroundExcluded ? Decision.None : _decisions.Decide(typedIn, Layouts.Typed(keys), en, he, _prevUnknown, DecisionTimeoutMs);
                 if (!d.Fix)
                 {
                     _log("keep: typed='" + Layouts.Typed(keys) + "' en='" + en + "' he='" + he + "' typedIn=" + typedIn + " -> " + (_foregroundExcluded ? "excluded app " + _foregroundProcess : d.Reason) + " [" + _foregroundProcess + "]");
                     _last = new LastAction { Kind = LastKind.Skipped, Keys = keys, TypedHkl = typedHkl, SeparatorVk = (int)vk };
+                    _prevUnknown = d.Unknown;
                     return false;
                 }
+                _prevUnknown = false;
                 _log("auto-fix: " + d.Reason + " [" + _foregroundProcess + "]");
                 DoFix(keys, typedHkl, _layouts.HklFor(d.Target), d.Text, (int)vk, Layouts.Typed(keys).Length);
                 return true; // we re-send the separator ourselves

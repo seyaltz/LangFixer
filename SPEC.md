@@ -151,18 +151,24 @@ if en in ignoreList            -> keep "ignored word"
 if IsValidEnglish(en)          -> keep "valid English"
 if the checker call failed     -> keep "dictionary fault"       # never convert on a checker failure
 trail = english[len(en):]
-corrected, strong = TryAutoCorrect(English, en)          # 5.5; null when autocorrect is off
-if corrected and strong        -> FIX English, text = corrected + trail   ("spelling (typo signature)")
 he = TrimTrailingAligned(hebrew, english)
-tooShort = len(he) < 3                                   # F6: skip the Hebrew checks, do NOT return yet
-if not tooShort:
-    if IsValidHebrew(he)       -> FIX Hebrew, text = hebrew
-    elif trail != "" and len(trail) < len(hebrew):
-         hePrefix = TrimTrailing(hebrew[:len(hebrew)-len(trail)])   # they pressed the real , or . key after a Hebrew word
-         if len(hePrefix) >= 3 and IsValidHebrew(hePrefix) -> FIX Hebrew, text = hePrefix + trail
-if corrected                   -> FIX English, text = corrected + trail   ("spelling")
-keep (tooShort ? "Hebrew too short" : "not Hebrew")
+heValid = len(he) >= 3 and IsValidHebrew(he)
+lowercaseUnknown = IsStructurallyEnglish(en) and en is all lowercase
+if names_guard and prevUnknown and lowercaseUnknown -> keep "names guard", Unknown = true
+corrected, strong = TryAutoCorrect(English, en)          # 5.5; null when autocorrect is off
+# priority, measured on real typing:
+if heValid and len(he) >= 4    -> FIX Hebrew, text = hebrew            # "eurv" is קורה, not "eruv"
+if corrected and strong        -> FIX English, text = corrected + trail   # "teh" -> "the" beats אקי
+if heValid                     -> FIX Hebrew, text = hebrew            # 3-letter Hebrew word
+if trail != "" and len(trail) < len(hebrew):
+     hePrefix = TrimTrailing(hebrew[:len(hebrew)-len(trail)])   # they pressed the real , or . key after a Hebrew word
+     if len(hePrefix) >= 3 and IsValidHebrew(hePrefix) -> FIX Hebrew, text = hePrefix + trail
+if corrected                   -> FIX English, text = corrected + trail   # weak, aggressive mode only
+keep ("Hebrew too short" | "not Hebrew"), Unknown = lowercaseUnknown and len(he) >= 3
 ```
+
+`Unknown` on a kept decision means the word failed both dictionaries; the Engine remembers it as
+`prevUnknown` for the next word in the same window (cleared by a fix, a click or a window change).
 
 **Typed while Hebrew layout was active** (did they mean English?):
 
@@ -172,13 +178,14 @@ if he in ignoreList            -> keep
 if IsValidHebrew(he)           -> keep "valid Hebrew"          # structurally needs len >= 2 anyway
 if the checker call failed     -> keep "dictionary fault"
 heTrail = hebrew[len(he):]
-corrected, strong = TryAutoCorrect(Hebrew, he)
+en = TrimTrailing(english); enValid = len(en) >= 2 and IsValidEnglish(en)
+corrected, strong = (names_guard and prevUnknown) ? null : TryAutoCorrect(Hebrew, he)   # the guard only withholds autocorrect here
+if enValid and len(en) >= 4    -> FIX English, text = english
 if corrected and strong        -> FIX Hebrew, text = corrected + heTrail
-en = TrimTrailing(english)
 if en in {"i","I","a","A"}     -> FIX English, text = english          # ן / ש alone are never words
-if len(en) >= 2 and IsValidEnglish(en) -> FIX English, text = english
+if enValid                     -> FIX English, text = english
 if corrected                   -> FIX Hebrew, text = corrected + heTrail
-keep "not English"
+keep ("English too short" | "not English"), Unknown = len(en) >= 2 and len(he) >= 2
 ```
 
 **After either branch**, before returning a FIX: if `text == typed` → keep "already reads as the
@@ -196,9 +203,17 @@ So `akuo,` → `שלום,` but `akuo/` → `שלום.` (the `/` key is a Hebrew 
 
 ### 5.5 Spelling autocorrect (opt-in)
 
+Four settings (section 6): `autocorrect` (off), `autocorrect_aggressive` (off), `autocorrect_hebrew`
+(off), `names_guard` (on). The defaults come from a day of real typing: aggressive mode produced
+`postgres` → `postures` and `poull` → `poll`; Hebrew mode "corrected" correct words.
+
 `TryAutoCorrect(lang, word)` returns `(suggestion, strong)` or null:
 
-- Off unless `settings.autocorrect = 1`. Word length ≥ 3.
+- Off unless `autocorrect = 1`; Hebrew additionally needs `autocorrect_hebrew = 1`. Word length ≥ 3.
+- Only the dictionary's **first** acceptable one-edit suggestion counts (walking further turns
+  `helo` into `help`). A weak suggestion (not a typing signature) is returned only when
+  `autocorrect_aggressive = 1`.
+- Suggestions that only add punctuation (`etc` → `etc.`) are unacceptable, like case-only ones.
 - English: structurally English, no apostrophe, first letter not uppercase (names and
   sentence-initial words are left alone). Hebrew: structurally Hebrew.
 - Ask the checker for suggestions (`ISpellChecker::Suggest`, up to 10). Take the **first** that is
@@ -308,7 +323,8 @@ differs, `tid = thread of hwndFocus`; `GetKeyboardLayout(tid)`.
   VirtualBoxVM.exe Code.exe "Code - Insiders.exe" devenv.exe idea64.exe rider64.exe pycharm64.exe
   webstorm64.exe datagrip64.exe goland64.exe clion64.exe dbeaver.exe pgAdmin4.exe cursor.exe
   windbg.exe`. Do **not** exclude general text editors (Notepad++, Sublime): people write notes there.
-- `settings.txt` — `key=value` lines; today only `autocorrect=0|1`.
+- `settings.txt` — `key=value` lines: `autocorrect`, `autocorrect_aggressive`, `autocorrect_hebrew`
+  (all default 0) and `names_guard` (default 1). Every option is a dashboard checkbox.
 - `log.txt` — only with `--debug`: `HH:mm:ss.fff auto-fix: <reason> 'typed' -> 'text' [process]` /
   `keep: typed='…' en='…' he='…' typedIn=… -> <reason> [process]`, plus startup lines
   (layouts found, dictionaries available, hooks installed, hotkey registered, hwnd).
@@ -426,6 +442,12 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 | autocorrect on: `thl` | English | fix → `איך` (not `the`) | |
 | autocorrect on: `gradle`, `Teh`, `hello` | English | keep | ignored / capitalized / valid |
 | autocorrect on: `heald` | English | never → `Heald` | capitalized suggestion rejected (may keep or → `heal`) |
+| autocorrect on, strict (default): `helo`, `postgres`, `poull`, `deplink`, `etc` | English | keep | weak suggestions need aggressive mode; `etc.` only adds punctuation |
+| autocorrect on, aggressive: `helo` | English | fix → `hello` | |
+| autocorrect on: `eurv` | English | fix → `קורה` | a 4-letter valid Hebrew word beats the transposition `eruv` |
+| `tal` alone / `tal` after an unknown word | English | fix → `אשך` / keep | names guard needs a preceding unknown word |
+| `webguru` | English | keep, Unknown = true | feeds the names guard |
+| `csh,v` (בדיכה) | Hebrew | keep by default | Hebrew autocorrect is opt-in |
 | `AcceptableSuggestion`: (heald, Heald) no; (hello, Hello) no; (teh, the) yes; (Teh, The) yes | | | |
 | autocorrect on: `hello` | Hebrew | fix → `hello` | |
 | `ForcedText`: `akuo,`→`שלום,`, `akuo/`→`שלום.`, `akuo`→`שלום`, to English `hello,`→`hello,` | | | |
@@ -463,14 +485,17 @@ tbjbu␣   -> + "אנחנו "                                 Hebrew
 Ctrl+Alt+H -> last "אנחנו " becomes "tbjbu "           English
 Ctrl+Alt+H -> back to "אנחנו "                         Hebrew
 hello⏎   -> + "hello\n"                                English
-teh␣     -> + "the "                                   English  (autocorrect)
+teh␣     -> + "the "                                   English  (autocorrect, typo signature)
+postgres␣ -> + "postgres "                             English  (strict mode leaves it)
 gradle␣  -> + "gradle "                                English
 Ctrl+Alt+H -> "gradle " becomes "ערשגךק "              Hebrew   (forced conversion posts the other layout)
 Ctrl+Alt+H -> back to "gradle "                        English
+eurv␣    -> + "קורה "                                  Hebrew   (layout beats spelling)
+(harness switches the layout back to English)
 akuo, then Ctrl+Alt+H (no separator) -> + "שלום,"      Hebrew
 ```
 
-40 checks = 20 steps × (document text + focus-thread layout); all must pass on an idle desktop.
+45 checks = 22 steps × (document text + focus-thread layout) + 1 precondition; all must pass on an idle desktop.
 
 ## 10. Recommended order of work (TDD)
 
@@ -487,6 +512,6 @@ akuo, then Ctrl+Alt+H (no separator) -> + "שלום,"      Hebrew
 
 - `build.cmd` produces `LangFixer.exe` with no errors using the Framework compiler.
 - `LangFixer.exe --test` prints `ALL PASSED` on a machine with both layouts and both checkers.
-- The driver prints `ALL PASSED` (40 checks) against a fresh Notepad tab.
+- The driver prints `ALL PASSED` (45 checks) against a fresh Notepad tab.
 - Typing `akuo nv akunl ` in Notepad with the English layout active produces `שלום מה שלומך ` and
   leaves the layout on Hebrew; typing `hello ` then produces `hello ` and switches back.

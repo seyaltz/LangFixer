@@ -141,7 +141,38 @@ namespace LangFixer
             acSettings.AutoCorrect = true;
             DecideText(acDet, layouts, "teh", Lang.English, "the", "autocorrect ON: teh -> the (spelling outranks the layout switch)");
             DecideText(acDet, layouts, "teh,", Lang.English, "the,", "autocorrect ON: teh, -> the, (punctuation kept)");
-            DecideText(acDet, layouts, "helo", Lang.English, "hello", "autocorrect ON: helo -> hello");
+            // Strict mode (default): only typo-signature corrections. Cases from a day of real typing.
+            Decide(acDet, layouts, "helo", Lang.English, false, "strict: helo kept (hello is a weak, one-insertion suggestion)");
+            Decide(acDet, layouts, "postgres", Lang.English, false, "strict: postgres kept (was 'postures')");
+            Decide(acDet, layouts, "poull", Lang.English, false, "strict: poull kept (was 'poll', user meant pull)");
+            Decide(acDet, layouts, "deplink", Lang.English, false, "strict: deplink kept (was 'delink')");
+            Decide(acDet, layouts, "etc", Lang.English, false, "etc kept (suggestion 'etc.' only adds punctuation)");
+            Check(!Detector.AcceptableSuggestion("etc", "etc."), "AcceptableSuggestion rejects punctuation-only 'etc.'");
+            DecideText(acDet, layouts, "eurv", Lang.English, "קורה", "layout beats spelling: eurv -> kore, not the transposition 'eruv'");
+            acSettings.AutoCorrectAggressive = true;
+            DecideText(acDet, layouts, "helo", Lang.English, "hello", "aggressive: helo -> hello");
+            acSettings.AutoCorrectAggressive = false;
+            // Names guard: 'tal' alone still converts (indistinguishable from thl -> eich); after an unknown word it is left alone.
+            DecideText(acDet, layouts, "tal", Lang.English, "אשך", "names guard off-context: tal alone -> ashach (documented limitation, undo teaches it)");
+            var gk = Keys("tal", layouts.English);
+            var gd = acDet.Decide(Lang.English, Layouts.Typed(gk), Layouts.Render(gk, layouts.English), Layouts.Render(gk, layouts.Hebrew), true);
+            Check(!gd.Fix, "names guard: tal after an unknown word -> keep  [" + gd.Reason + "]");
+            var pk = Keys("webguru", layouts.English);
+            var pd = acDet.Decide(Lang.English, Layouts.Typed(pk), Layouts.Render(pk, layouts.English), Layouts.Render(pk, layouts.Hebrew), false);
+            Check(!pd.Fix && pd.Unknown, "webguru alone -> keep and flagged unknown (feeds the guard)  [" + pd.Reason + "]");
+            var ak = Keys("ayash", layouts.English);
+            var ad = acDet.Decide(Lang.English, Layouts.Typed(ak), Layouts.Render(ak, layouts.English), Layouts.Render(ak, layouts.Hebrew), false);
+            Line("     documented limitation: a name with a typo signature is still corrected when it stands alone: ayash -> " + (ad.Fix ? "'" + ad.Text + "'" : "keep"));
+            var ad2 = acDet.Decide(Lang.English, Layouts.Typed(ak), Layouts.Render(ak, layouts.English), Layouts.Render(ak, layouts.Hebrew), true);
+            Check(!ad2.Fix, "names guard: ayash after an unknown word -> keep  [" + ad2.Reason + "]");
+            // Hebrew autocorrect is off by default
+            var hk = Keys("csh,v", layouts.Hebrew); // בדיכה (typo of בדיחה)
+            var hd = acDet.Decide(Lang.Hebrew, Layouts.Typed(hk), Layouts.Render(hk, layouts.English), Layouts.Render(hk, layouts.Hebrew));
+            Check(!hd.Fix, "Hebrew autocorrect off by default: bedicha kept  [" + hd.Reason + "]");
+            acSettings.AutoCorrectHebrew = true;
+            var hd2 = acDet.Decide(Lang.Hebrew, Layouts.Typed(hk), Layouts.Render(hk, layouts.English), Layouts.Render(hk, layouts.Hebrew));
+            Line("     Hebrew autocorrect on: bedicha -> " + (hd2.Fix ? "'" + hd2.Text + "'" : "keep") + "  [" + hd2.Reason + "]");
+            acSettings.AutoCorrectHebrew = false;
             Decide(acDet, layouts, "gradle", Lang.English, false, "autocorrect ON: ignored word untouched");
             Decide(acDet, layouts, "Teh", Lang.English, false, "autocorrect ON: capitalized word untouched");
             DecideText(acDet, layouts, "akuo", Lang.English, "שלום", "autocorrect ON: layout fix still applies (akuo -> shalom, not the suggestion 'akua')");
@@ -166,11 +197,11 @@ namespace LangFixer
             // The path the hook actually uses: worker thread + cache.
             using (var svc = new DecisionService(new Settings(new string[0], new string[0]), null))
             {
-                var d1 = svc.Decide(Lang.English, "akuo", "akuo", "שלום", 3000);
+                var d1 = svc.Decide(Lang.English, "akuo", "akuo", "שלום", false, 3000);
                 Check(d1.Fix && d1.Text == "שלום", "DecisionService: akuo -> shalom via worker thread" + (d1.Reason.Length > 0 ? "  [" + d1.Reason + "]" : ""));
-                svc.Prefetch(Lang.Hebrew, "יקךךם", "hello", "יקךךם");
+                svc.Prefetch(Lang.Hebrew, "יקךךם", "hello", "יקךךם", false);
                 Thread.Sleep(200);
-                var d2 = svc.Decide(Lang.Hebrew, "יקךךם", "hello", "יקךךם", 0);
+                var d2 = svc.Decide(Lang.Hebrew, "יקךךם", "hello", "יקךךם", false, 0);
                 Check(d2.Fix && d2.Text == "hello", "DecisionService: prefetched verdict served from cache with zero wait");
             }
 

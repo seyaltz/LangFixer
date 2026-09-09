@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
@@ -18,8 +19,8 @@ namespace LangFixer
         private readonly Action<bool> _setEnabled;
         private readonly Func<bool> _isStartup;
         private readonly Action<bool> _setStartup;
-        private readonly Action<bool> _setAutoCorrect;
-        private readonly CheckBox _autoCorrect = new CheckBox();
+        private readonly Action<string, bool> _setOption;
+        private readonly System.Collections.Generic.List<KeyValuePair<string, CheckBox>> _options = new System.Collections.Generic.List<KeyValuePair<string, CheckBox>>();
 
         private readonly Label _state = new Label();
         private readonly Button _toggle = new Button();
@@ -29,7 +30,7 @@ namespace LangFixer
         private readonly Timer _refresh = new Timer();
 
         public DashboardForm(Engine engine, Settings settings, Dictionaries dict, Layouts layouts, Icon icon,
-                             Action<bool> setEnabled, Func<bool> isStartup, Action<bool> setStartup, Action<bool> setAutoCorrect)
+                             Action<bool> setEnabled, Func<bool> isStartup, Action<bool> setStartup, Action<string, bool> setOption)
         {
             _engine = engine;
             _settings = settings;
@@ -38,7 +39,7 @@ namespace LangFixer
             _setEnabled = setEnabled;
             _isStartup = isStartup;
             _setStartup = setStartup;
-            _setAutoCorrect = setAutoCorrect;
+            _setOption = setOption;
 
             Text = "LangFixer";
             Icon = icon;
@@ -46,7 +47,7 @@ namespace LangFixer
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(560, 500);
+            ClientSize = new Size(560, 560);
             BackColor = Color.White;
 
             Build();
@@ -105,16 +106,16 @@ namespace LangFixer
             _feed.RightToLeft = RightToLeft.No;
             Controls.Add(_feed);
 
-            _autoCorrect.Text = "Auto-correct spelling mistakes (dictionary suggestion, one-letter typos only; Ctrl+Alt+H undoes)";
-            _autoCorrect.AutoSize = true;
-            _autoCorrect.Location = new Point(22, 382);
-            _autoCorrect.Checked = _settings.AutoCorrect;
-            _autoCorrect.CheckedChanged += delegate { _setAutoCorrect(_autoCorrect.Checked); };
-            Controls.Add(_autoCorrect);
+            // Behaviour options. Defaults are the conservative set measured on a day of real typing.
+            int y = 380;
+            y = AddOption(Settings.KeyAutoCorrect, 22, y, "Auto-correct typos with a typing signature (swapped letters, neighbouring key). Ctrl+Alt+H undoes");
+            y = AddOption(Settings.KeyAggressive, 44, y, "Aggressive: also take any one-letter dictionary suggestion (turned postgres into postures)");
+            y = AddOption(Settings.KeyHebrew, 44, y, "Hebrew too (the Windows Hebrew checker \"fixed\" correct words; off is safer)");
+            y = AddOption(Settings.KeyNamesGuard, 22, y, "Names guard: leave a lowercase unknown word alone right after another unknown word");
 
             _startup.Text = "Start with Windows (minimized to tray)";
             _startup.AutoSize = true;
-            _startup.Location = new Point(22, 410);
+            _startup.Location = new Point(22, y);
             _startup.Checked = _isStartup();
             _startup.CheckedChanged += delegate { _setStartup(_startup.Checked); _startup.Checked = _isStartup(); };
             Controls.Add(_startup);
@@ -128,9 +129,18 @@ namespace LangFixer
             UpdateState();
         }
 
+        private int AddOption(string key, int x, int y, string text)
+        {
+            var cb = new CheckBox { Text = text, AutoSize = true, Location = new Point(x, y), Checked = _settings.Get(key) };
+            cb.CheckedChanged += delegate { _setOption(key, cb.Checked); };
+            Controls.Add(cb);
+            _options.Add(new KeyValuePair<string, CheckBox>(key, cb));
+            return y + 24;
+        }
+
         private int AddButton(string text, int x, EventHandler onClick)
         {
-            var b = new Button { Text = text, AutoSize = true, Location = new Point(x, 448), FlatStyle = FlatStyle.System };
+            var b = new Button { Text = text, AutoSize = true, Location = new Point(x, 508), FlatStyle = FlatStyle.System };
             b.Click += onClick;
             Controls.Add(b);
             return x + b.PreferredSize.Width + 8;
@@ -157,7 +167,8 @@ namespace LangFixer
             _toggle.BackColor = on ? Color.FromArgb(0xB0, 0x30, 0x30) : Color.FromArgb(0x1E, 0x8E, 0x3E);
             _fixes.Text = "Words fixed this session: " + _engine.FixCount;
             if (_startup.Checked != _isStartup()) _startup.Checked = _isStartup();
-            if (_autoCorrect.Checked != _settings.AutoCorrect) _autoCorrect.Checked = _settings.AutoCorrect;
+            foreach (var o in _options)
+                if (o.Value.Checked != _settings.Get(o.Key)) o.Value.Checked = _settings.Get(o.Key);
         }
 
         private readonly System.Collections.Generic.List<string> _pendingLines = new System.Collections.Generic.List<string>();
