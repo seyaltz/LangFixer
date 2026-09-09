@@ -12,10 +12,14 @@ rest of the sentence comes out right.
 Single `LangFixer.exe`, no installer, no runtime to install (uses the .NET Framework 4.8
 that ships with Windows 10/11).
 
-**Video walkthrough**: `langfixer-demo.mp4` on the
-[v1.0 release](https://github.com/seyaltz/LangFixer/releases/tag/v1.0) (3:20, narrated, subtitles
-burned in, `.vtt` and transcript alongside). Two intro slides, then a live Notepad demo in which
-every step is read back through UI Automation and asserted; the pipeline is in `video/`.
+**Video walkthroughs** on the [v1.0 release](https://github.com/seyaltz/LangFixer/releases/tag/v1.0),
+each narrated with subtitles burned in and a `.vtt` plus transcript alongside; every live step is read
+back from Notepad through UI Automation and asserted, and the pipeline is in `video/`:
+
+- `langfixer-demo-he.mp4` (Hebrew, 3:00): a short explanation, the live demo, the dashboard, then
+  the installation options. Voice: Windows "Microsoft Asaf" (install the `Language.TextToSpeech~~~he-IL`
+  capability to reproduce).
+- `langfixer-demo.mp4` (English, 3:20): two intro slides, the live demo, a closing card.
 
 **Rebuilt independently from the spec.** On 2026-09-09 a separate coding agent, given only
 [SPEC.md](SPEC.md) and forbidden from reading this source, rebuilt the program in 23 minutes. Its
