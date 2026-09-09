@@ -12,6 +12,12 @@ rest of the sentence comes out right.
 Single `LangFixer.exe`, no installer, no runtime to install (uses the .NET Framework 4.8
 that ships with Windows 10/11).
 
+**Rebuilt independently from the spec.** On 2026-09-09 a separate coding agent, given only
+[SPEC.md](SPEC.md) and forbidden from reading this source, rebuilt the program in 23 minutes. Its
+build passed its own 81 self-test checks and this repository's 40-step live Notepad driver, 40/40.
+Its gap report is in [docs/REBUILD-NOTES-2026-09-09.md](docs/REBUILD-NOTES-2026-09-09.md) and every
+gap it found is folded into the spec.
+
 ## How it works
 
 1. A low-level keyboard hook records the physical keys of the word you are typing.
