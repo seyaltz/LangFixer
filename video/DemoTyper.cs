@@ -25,6 +25,32 @@ internal static class DemoTyper
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int w, int h, uint flags);
+    [DllImport("user32.dll")] static extern void SwitchToThisWindow(IntPtr hwnd, bool altTab);
+    [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr hwnd);
+
+    /// <summary>
+    /// Bring a window to the foreground from a background process. SetForegroundWindow alone is refused while
+    /// another app holds the foreground lock; the documented escape hatch is to synthesise an Alt press first,
+    /// then SwitchToThisWindow. Returns true only when the window really is in front.
+    /// </summary>
+    static bool Foreground(IntPtr hwnd)
+    {
+        for (int attempt = 0; attempt < 6; attempt++)
+        {
+            if (Native.GetForegroundWindow() == hwnd) return true;
+            ShowWindow(hwnd, 9);
+            SetForegroundWindow(hwnd);
+            if (Native.GetForegroundWindow() == hwnd) return true;
+            // Alt tap unlocks the foreground for this process; Ctrl inside it stops the menu bar from activating.
+            Send(new List<Native.INPUT> { Make(Native.VK_MENU, false), Make(Native.VK_CONTROL, false), Make(Native.VK_CONTROL, true), Make(Native.VK_MENU, true) });
+            Thread.Sleep(60);
+            SwitchToThisWindow(hwnd, true);
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            Thread.Sleep(250);
+        }
+        return Native.GetForegroundWindow() == hwnd;
+    }
 
     static int Main(string[] args)
     {
@@ -41,8 +67,13 @@ internal static class DemoTyper
                     Console.WriteLine(Layouts.LangOf(Layouts.ForegroundHkl()));
                     return 0;
                 }
-            case "type": Type(args[1].Replace("\\n", "\n")); return 0;
-            case "hotkey": Chord(new[] { Native.VK_CONTROL, Native.VK_MENU }, 'H'); return 0;
+            case "type":
+                // Never type into anything but Notepad: a demo run once typed into a Teams chat box.
+                if (ClassOf(Native.GetForegroundWindow()) != "Notepad") { Console.WriteLine("refused: foreground is " + ClassOf(Native.GetForegroundWindow())); return 3; }
+                Type(args[1].Replace("\\n", "\n")); return 0;
+            case "hotkey":
+                if (ClassOf(Native.GetForegroundWindow()) != "Notepad") { Console.WriteLine("refused: foreground is " + ClassOf(Native.GetForegroundWindow())); return 3; }
+                Chord(new[] { Native.VK_CONTROL, Native.VK_MENU }, 'H'); return 0;
             case "zoom": // Ctrl+= N times (Notepad zoom in)
                 for (int i = 0; i < int.Parse(args[1]); i++) { Chord(new[] { Native.VK_CONTROL }, (char)0xBB); Thread.Sleep(120); }
                 return 0;
@@ -86,8 +117,7 @@ internal static class DemoTyper
         }
         if (hwnd == IntPtr.Zero) hwnd = FindWindow("Notepad", null);
         if (hwnd == IntPtr.Zero) { Console.WriteLine("notepad not found"); return 1; }
-        ShowWindow(hwnd, 9);
-        SetForegroundWindow(hwnd);
+        if (!Foreground(hwnd)) { Console.WriteLine("notepad could not be brought to the front (foreground is " + ClassOf(Native.GetForegroundWindow()) + ")"); return 1; }
         Thread.Sleep(600);
         Chord(new[] { Native.VK_CONTROL }, 'N');
         Thread.Sleep(700);
@@ -104,10 +134,10 @@ internal static class DemoTyper
         // Windows 11 top-level windows have ~7px invisible resize borders left/right/bottom: overshoot so the
         // visible frame fills the requested rectangle exactly and nothing behind it leaks into the capture.
         SetWindowPos(hwnd, IntPtr.Zero, x - 7, y, w + 14, h + 7, 0x0040 /*SHOWWINDOW*/);
-        SetForegroundWindow(hwnd);
+        bool front = Foreground(hwnd);
         Thread.Sleep(400);
-        Console.WriteLine("ok");
-        return 0;
+        Console.WriteLine(front ? "ok" : "placed but not foreground (" + ClassOf(Native.GetForegroundWindow()) + ")");
+        return front ? 0 : 1;
     }
 
     static string ReadText(IntPtr hwnd)

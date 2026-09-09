@@ -26,6 +26,7 @@ namespace LangFixer
         private const int LayoutSwitchTimeoutMs = 300;
         /// <summary>After the layout change is visible, text controls (RichEdit/TSF) still reset their input context; keys sent inside that window get dropped.</summary>
         private const int LayoutSettleMs = 120; // 60 was borderline: one run in ten still lost the first key
+        private const int BackspaceSettleMs = 80;
 
         private sealed class Job
         {
@@ -175,7 +176,9 @@ namespace LangFixer
                 list.Add(Fixer.Vk(Native.VK_BACK, true, Native.InjectMarker));
             }
             Fixer.Send(list);
-            Thread.Sleep(UnicodeDelayMs);
+            // The text control needs a moment after a burst of backspaces or it drops the first key that follows
+            // ("teh" -> "he" once the layout-switch settle no longer covered this case).
+            Thread.Sleep(BackspaceSettleMs);
 
             bool switched = false;
             if (job.Hkl != IntPtr.Zero)

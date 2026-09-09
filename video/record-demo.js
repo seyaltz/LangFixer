@@ -46,7 +46,8 @@ async function browserAct(fn) {
 async function demo(intro, introSay, typed, expectFn, passText, passSay, holdMs) {
     say(intro, introSay);
     await sleep(700);
-    if (typed === 'HOTKEY') typer('hotkey'); else typer('type', typed);
+    const r = typed === 'HOTKEY' ? typer('hotkey') : typer('type', typed);
+    if (r.code !== 0) throw new Error('typing refused, Notepad is not in front: ' + r.out);
     await sleep(holdMs || 2600);
     const t = notepadText();
     const ok = expectFn(t);
@@ -100,7 +101,8 @@ async function demo(intro, introSay, typed, expectFn, passText, passSay, holdMs)
     try {
         const launched = typer('launch-notepad');
         if (launched.code !== 0) throw new Error('notepad: ' + launched.out);
-        typer('place', 'class:Notepad', String(REGION.x), String(REGION.y), String(REGION.w), String(REGION.h));
+        const placed = typer('place', 'class:Notepad', String(REGION.x), String(REGION.y), String(REGION.w), String(REGION.h));
+        if (placed.code !== 0) throw new Error('notepad: ' + placed.out);
         typer('zoom', '5');
         typer('layout', 'en');
         await sleep(500);

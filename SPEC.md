@@ -257,7 +257,9 @@ Runs on its own thread, one job at a time, from a queue. A job is
 1. **Wait until Ctrl, Alt, Shift and Win are all physically up** (poll `GetAsyncKeyState`, up to
    1.5 s, then proceed anyway rather than drop the job). A hotkey-triggered job starts while
    Ctrl+Alt are still held, and Alt+Backspace is Undo in Notepad: the first backspace was being eaten.
-2. Send `backspaces` × (Backspace down, up) in one `SendInput` batch. Sleep ~8 ms.
+2. Send `backspaces` × (Backspace down, up) in one `SendInput` batch. **Sleep ~80 ms**: without it
+   the text control drops the first key that follows the burst (`teh` came out as `he` once the
+   layout-switch settle no longer covered same-layout rewrites).
 3. If `hkl` given and the focus thread is **already** on `hkl` (a spelling fix; an undo after a
    failed switch): skip this whole step, no reset window occurs. Otherwise post
    `WM_INPUTLANGCHANGEREQUEST` (0x0050, wParam 0, lParam = hkl) to the focus

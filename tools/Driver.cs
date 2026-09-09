@@ -174,11 +174,20 @@ internal static class Driver
     }
 
     /// <summary>Bring Notepad to front; if the user is typing elsewhere, wait until it is really foreground.</summary>
+    [DllImport("user32.dll")] private static extern void SwitchToThisWindow(IntPtr hwnd, bool altTab);
+
     private static bool WaitForeground()
     {
         for (int i = 0; i < 120; i++)
         {
             if (Native.GetForegroundWindow() == _hwnd) return true;
+            ShowWindow(_hwnd, 9);
+            SetForegroundWindow(_hwnd);
+            if (Native.GetForegroundWindow() == _hwnd) return true;
+            // Another app holds the foreground lock: an Alt press (with Ctrl inside so no menu opens) releases it.
+            Send(new List<Native.INPUT> { Make(Native.VK_MENU, false), Make(Native.VK_CONTROL, false), Make(Native.VK_CONTROL, true), Make(Native.VK_MENU, true) });
+            Thread.Sleep(60);
+            SwitchToThisWindow(_hwnd, true);
             SetForegroundWindow(_hwnd);
             Thread.Sleep(500);
         }
