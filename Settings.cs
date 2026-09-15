@@ -31,6 +31,9 @@ namespace LangFixer
         public const string KeyAggressive = "autocorrect_aggressive";
         public const string KeyHebrew = "autocorrect_hebrew";
         public const string KeyNamesGuard = "names_guard";
+        /// <summary>Write every decision to log.txt in the data folder (what --debug used to do). Off by default: it records typed words.</summary>
+        public volatile bool LogToFile;
+        public const string KeyLog = "log";
 
         // Read from the dictionary worker thread, written from the UI thread: guard every access.
         private readonly object _lock = new object();
@@ -115,6 +118,7 @@ namespace LangFixer
                     else if (key.Equals(KeyAggressive, StringComparison.OrdinalIgnoreCase)) AutoCorrectAggressive = on;
                     else if (key.Equals(KeyHebrew, StringComparison.OrdinalIgnoreCase)) AutoCorrectHebrew = on;
                     else if (key.Equals(KeyNamesGuard, StringComparison.OrdinalIgnoreCase)) NamesGuard = on;
+                    else if (key.Equals(KeyLog, StringComparison.OrdinalIgnoreCase)) LogToFile = on;
                 }
             }
             catch { }
@@ -128,6 +132,7 @@ namespace LangFixer
                 case KeyAggressive: return AutoCorrectAggressive;
                 case KeyHebrew: return AutoCorrectHebrew;
                 case KeyNamesGuard: return NamesGuard;
+                case KeyLog: return LogToFile;
             }
             return false;
         }
@@ -141,6 +146,7 @@ namespace LangFixer
                 case KeyAggressive: AutoCorrectAggressive = on; break;
                 case KeyHebrew: AutoCorrectHebrew = on; break;
                 case KeyNamesGuard: NamesGuard = on; break;
+                case KeyLog: LogToFile = on; break;
                 default: return;
             }
             if (SettingsPath == null) return;
@@ -156,7 +162,9 @@ namespace LangFixer
                     "# autocorrect_hebrew: autocorrect Hebrew too (the Windows Hebrew checker is unreliable)",
                     KeyHebrew + "=" + (AutoCorrectHebrew ? "1" : "0"),
                     "# names_guard: leave a lowercase unknown word alone right after another unknown word",
-                    KeyNamesGuard + "=" + (NamesGuard ? "1" : "0")
+                    KeyNamesGuard + "=" + (NamesGuard ? "1" : "0"),
+                    "# log: write every decision to log.txt (records the words you type)",
+                    KeyLog + "=" + (LogToFile ? "1" : "0")
                 }, Encoding.UTF8);
             }
             catch { }

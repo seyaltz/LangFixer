@@ -47,7 +47,7 @@ namespace LangFixer
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(640, 560);
+            ClientSize = new Size(640, 584);
             BackColor = Color.White;
 
             Build();
@@ -112,6 +112,7 @@ namespace LangFixer
             y = AddOption(Settings.KeyAggressive, 44, y, "Aggressive: accept any one-letter suggestion (risky: postgres → postures)");
             y = AddOption(Settings.KeyHebrew, 44, y, "Hebrew too (the Windows Hebrew checker is unreliable)");
             y = AddOption(Settings.KeyNamesGuard, 22, y, "Names guard: skip an unknown lowercase word right after another unknown word");
+            y = AddOption(Settings.KeyLog, 22, y, "Write a decision log (log.txt in the data folder; it records the words you type)");
 
             _startup.Text = "Start with Windows (minimized to tray)";
             _startup.AutoSize = true;
@@ -140,7 +141,7 @@ namespace LangFixer
 
         private int AddButton(string text, int x, EventHandler onClick)
         {
-            var b = new Button { Text = text, AutoSize = true, Location = new Point(x, 508), FlatStyle = FlatStyle.System };
+            var b = new Button { Text = text, AutoSize = true, Location = new Point(x, 532), FlatStyle = FlatStyle.System };
             b.Click += onClick;
             Controls.Add(b);
             return x + b.PreferredSize.Width + 8;

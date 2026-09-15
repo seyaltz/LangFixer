@@ -30,7 +30,27 @@ namespace LangFixer
         private readonly DecisionService _decisions;
         private readonly Engine _engine;
         private readonly Hooks _hooks;
-        private readonly StreamWriter _log;
+        private StreamWriter _log;
+
+        /// <summary>Open or close the decision log to match the setting (the --debug flag just turns the setting on for this run).</summary>
+        private void SyncLogWriter()
+        {
+            bool want = _settings.LogToFile;
+            if (want && _log == null)
+            {
+                try
+                {
+                    Directory.CreateDirectory(_settings.Dir);
+                    _log = new StreamWriter(Path.Combine(_settings.Dir, "log.txt"), true) { AutoFlush = true };
+                }
+                catch { _log = null; }
+            }
+            else if (!want && _log != null)
+            {
+                try { _log.Dispose(); } catch { }
+                _log = null;
+            }
+        }
         private readonly bool _startMinimized;
         private NotifyIcon _tray;
         private MenuItem _enabledItem;
@@ -45,11 +65,8 @@ namespace LangFixer
         {
             _startMinimized = startMinimized;
             _settings = new Settings();
-            if (debug)
-            {
-                Directory.CreateDirectory(_settings.Dir);
-                _log = new StreamWriter(Path.Combine(_settings.Dir, "log.txt"), true) { AutoFlush = true };
-            }
+            if (debug) _settings.LogToFile = true; // session-only override; the dashboard checkbox persists it
+            SyncLogWriter();
             _layouts = Layouts.Discover();
             _decisions = new DecisionService(_settings, Log);
             _dict = _decisions.Dictionaries; // waits for the worker thread to create the spell checkers
@@ -186,6 +203,7 @@ namespace LangFixer
         {
             if (_settings.Get(key) == on) return;
             _settings.Set(key, on);
+            if (key == Settings.KeyLog) SyncLogWriter();
             _decisions.ClearCache(); // cached verdicts were computed under the old settings
             if (_autoCorrectItem != null) _autoCorrectItem.Checked = _settings.AutoCorrect;
             Log("option " + key + (on ? " on" : " off"));
