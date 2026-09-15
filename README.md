@@ -12,7 +12,7 @@ rest of the sentence comes out right.
 Single `LangFixer.exe`, no installer, no runtime to install (uses the .NET Framework 4.8
 that ships with Windows 10/11).
 
-**Video walkthroughs** on the [v1.0 release](https://github.com/seyaltz/LangFixer/releases/tag/v1.0),
+**Video walkthroughs** on the [latest release](https://github.com/seyaltz/LangFixer/releases/latest),
 each narrated with subtitles burned in and a `.vtt` plus transcript alongside; every live step is read
 back from Notepad through UI Automation and asserted, and the pipeline is in `video/`:
 
@@ -94,6 +94,7 @@ The defaults are the conservative set measured on a full day of real typing (850
 | Aggressive | off | Also takes any other one-letter suggestion. Real results with it on: `postgres` → `postures`, `poull` → `poll`, `deplink` → `delink`. |
 | Hebrew too | off | Autocorrect Hebrew as well. The Windows Hebrew checker "corrected" correct words (העלתי, השתחזר), so it is off. |
 | Names guard | on | A lowercase word that fails both dictionaries, right after another such word, is left alone: `tal ayash` is a name, not two mistakes. |
+| Write a decision log | off | Appends every decision to `log.txt` in the data folder (what `--debug` did). It records the words you type, so it is off unless you turn it on. |
 
 Rules that always apply: words are at least 3 letters, never capitalized or all-caps, suggestions
 that only change case or add punctuation are rejected (`heald` → `Heald`, `etc` → `etc.`), and a
