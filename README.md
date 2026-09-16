@@ -12,7 +12,7 @@ rest of the sentence comes out right.
 Single `LangFixer.exe`, no installer, no runtime to install (uses the .NET Framework 4.8
 that ships with Windows 10/11).
 
-**Download** the latest `LangFixer.exe` from the [latest release](https://github.com/seyaltz/LangFixer/releases/latest) (v1.2).
+**Download** the latest `LangFixer.exe` from the [latest release](https://github.com/seyaltz/LangFixer/releases/latest) (v1.3).
 
 **Video walkthroughs** on the [v1.0 release](https://github.com/seyaltz/LangFixer/releases/tag/v1.0),
 each narrated with subtitles burned in and a `.vtt` plus transcript alongside; every live step is read
