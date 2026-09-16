@@ -169,16 +169,18 @@ namespace LangFixer
         private void Perform(Job job)
         {
             WaitForModifiersUp();
-            var list = new List<Native.INPUT>();
+            // Send each backspace individually: ConPTY-backed terminals (Windows Terminal) drop keys
+            // from bursts. Individual sends with 20ms delay reliably erase compound-fix spans (7+).
             for (int i = 0; i < job.Backspaces; i++)
             {
-                list.Add(Fixer.Vk(Native.VK_BACK, false, Native.InjectMarker));
-                list.Add(Fixer.Vk(Native.VK_BACK, true, Native.InjectMarker));
+                Fixer.Send(new List<Native.INPUT>
+                {
+                    Fixer.Vk(Native.VK_BACK, false, Native.InjectMarker),
+                    Fixer.Vk(Native.VK_BACK, true, Native.InjectMarker)
+                });
+                Thread.Sleep(20);
             }
-            Fixer.Send(list);
-            // The text control needs a moment after a burst of backspaces or it drops the first key that follows
-            // ("teh" -> "he" once the layout-switch settle no longer covered this case).
-            Thread.Sleep(BackspaceSettleMs);
+            if (job.Backspaces > 0) Thread.Sleep(BackspaceSettleMs);
 
             bool switched = false;
             if (job.Hkl != IntPtr.Zero)

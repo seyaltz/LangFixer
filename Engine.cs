@@ -18,6 +18,9 @@ namespace LangFixer
             public IntPtr FixedHkl;   // layout we switched to (Fixed only)
             public string FixedText;  // what we typed instead (Fixed only)
             public int SeparatorVk;   // 0 if none
+            public bool KeptDueToLength;
+            public Lang PendingTarget;
+            public string PendingText;
         }
 
         /// <summary>How long the hook may wait for a dictionary verdict at a word boundary (LL hook budget is 300ms).</summary>
@@ -146,7 +149,8 @@ namespace LangFixer
                 };
                 rec.Typed = Layouts.Render(rec, hkl);
                 _buffer.Add(rec);
-                _last = null;
+                if (_last == null || !_last.KeptDueToLength)
+                    _last = null;
                 if (Enabled && !_foregroundExcluded && _layouts.Complete && !_tainted)
                     _decisions.Prefetch(Layouts.LangOf(hkl), Layouts.Typed(_buffer), Layouts.Render(_buffer, _layouts.English), Layouts.Render(_buffer, _layouts.Hebrew), _prevUnknown);
                 return false;
@@ -177,13 +181,39 @@ namespace LangFixer
                 if (!d.Fix)
                 {
                     _log("keep: typed='" + Layouts.Typed(keys) + "' en='" + en + "' he='" + he + "' typedIn=" + typedIn + " -> " + (_foregroundExcluded ? "excluded app " + _foregroundProcess : d.Reason) + " [" + _foregroundProcess + "]");
-                    _last = new LastAction { Kind = LastKind.Skipped, Keys = keys, TypedHkl = typedHkl, SeparatorVk = (int)vk };
+                    _last = new LastAction
+                    {
+                        Kind = LastKind.Skipped, Keys = keys, TypedHkl = typedHkl, SeparatorVk = (int)vk,
+                        KeptDueToLength = d.KeptDueToLength, PendingTarget = d.PendingTarget, PendingText = d.PendingText
+                    };
                     _prevUnknown = d.Unknown;
                     return false;
                 }
                 _prevUnknown = false;
-                _log("auto-fix: " + d.Reason + " [" + _foregroundProcess + "]");
-                DoFix(keys, typedHkl, _layouts.HklFor(d.Target), d.Text, (int)vk, Layouts.Typed(keys).Length);
+                if (_last != null && _last.Kind == LastKind.Skipped
+                    && _last.KeptDueToLength && _last.PendingTarget == d.Target)
+                {
+                    // Compound fix: two jobs — first erases everything and types the retroactive word
+                    // with the inter-word separator, second types the current word with the trailing separator.
+                    // Splitting avoids a VkKeyScanEx space mid-stream that gets lost in some apps.
+                    string prevTyped = Layouts.Typed(_last.Keys);
+                    int bs = Layouts.Typed(keys).Length + 1 + prevTyped.Length;
+                    IntPtr targetHkl = _layouts.HklFor(d.Target);
+                    _log("auto-fix (retroactive): '" + prevTyped + "' -> '" + _last.PendingText + "' + '" + d.Reason + "' [" + _foregroundProcess + "]");
+                    Injector.Enqueue(bs, targetHkl, _last.PendingText, _last.Keys, _last.SeparatorVk);
+                    Injector.Enqueue(0, targetHkl, d.Text, keys, (int)vk);
+                    FixCount += 2;
+                    _last = new LastAction
+                    {
+                        Kind = LastKind.Fixed, Keys = keys, TypedHkl = typedHkl, FixedHkl = targetHkl,
+                        FixedText = d.Text, SeparatorVk = (int)vk
+                    };
+                }
+                else
+                {
+                    _log("auto-fix: " + d.Reason + " [" + _foregroundProcess + "]");
+                    DoFix(keys, typedHkl, _layouts.HklFor(d.Target), d.Text, (int)vk, Layouts.Typed(keys).Length);
+                }
                 return true; // we re-send the separator ourselves
             }
 

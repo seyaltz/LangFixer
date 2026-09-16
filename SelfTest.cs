@@ -122,6 +122,19 @@ namespace LangFixer
             Decide(det, layouts, "please", Lang.Hebrew, true, "please typed in Hebrew -> fix");
             Decide(det, layouts, "vhv/", Lang.English, true, "haya + Hebrew period key -> fix");
 
+            // Retroactive fix: short words kept due to length with pending info
+            var nvKeys = Keys("nv", layouts.English);
+            var nvDec = det.Decide(Lang.English, Layouts.Typed(nvKeys), Layouts.Render(nvKeys, layouts.English), Layouts.Render(nvKeys, layouts.Hebrew));
+            Check(!nvDec.Fix && nvDec.KeptDueToLength && nvDec.PendingTarget == Lang.Hebrew,
+                "nv -> keep with KeptDueToLength=true, PendingTarget=Hebrew  [" + nvDec.Reason + "]");
+            Check(nvDec.PendingText != null && nvDec.PendingText.Length > 0,
+                "nv -> PendingText is populated: '" + nvDec.PendingText + "'");
+            // A 2-letter combo that is NOT valid Hebrew should NOT have KeptDueToLength
+            var qqKeys = Keys("qq", layouts.English);
+            var qqDec = det.Decide(Lang.English, Layouts.Typed(qqKeys), Layouts.Render(qqKeys, layouts.English), Layouts.Render(qqKeys, layouts.Hebrew));
+            Check(!qqDec.Fix && !qqDec.KeptDueToLength,
+                "qq -> keep without KeptDueToLength (not valid Hebrew)  [" + qqDec.Reason + "]");
+
             // Spelling autocorrect (dictionary suggestions, one edit away)
             Check(Detector.IsOneEditAway("teh", "the"), "one edit: transposition");
             Check(Detector.IsOneEditAway("helo", "hello"), "one edit: missing letter");

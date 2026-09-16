@@ -10,6 +10,12 @@ namespace LangFixer
         public string Reason = "";
         /// <summary>Kept, and the word fails BOTH dictionaries: the signature of a name or an identifier. Feeds the names guard for the next word.</summary>
         public bool Unknown;
+        /// <summary>Kept only because the target word was shorter than the minimum length.</summary>
+        public bool KeptDueToLength;
+        /// <summary>The language the short word would have been converted to.</summary>
+        public Lang PendingTarget;
+        /// <summary>The text the short word would have been converted to (full rendering including trailing punct).</summary>
+        public string PendingText;
 
         public static readonly Decision None = new Decision();
 
@@ -122,7 +128,8 @@ namespace LangFixer
             // If they meant Hebrew, only keys that are punctuation in both layouts (' and / give Hebrew comma
             // and period) are punctuation; the W key's geresh stays part of the word.
             string he = TrimTrailingAligned(hebrew, english);
-            bool heValid = he.Length >= MinHebrewLength && _dict.IsValidHebrew(he);
+            bool heValidDict = _dict.IsValidHebrew(he);
+            bool heValid = he.Length >= MinHebrewLength && heValidDict;
             string heVerdict = he.Length < MinHebrewLength ? "Hebrew too short" : heValid ? "" : "not Hebrew" + Err();
 
             // Names guard: a lowercase word that fails both dictionaries, right after another such word, is almost
@@ -168,7 +175,15 @@ namespace LangFixer
             if (corrected != null)
                 return Decision.To(Lang.English, corrected + trail, "spelling: '" + en + "' -> '" + corrected + "'");
             // Fails both dictionaries (and is not merely too short): remember it for the names guard.
-            return lowercaseUnknown && he.Length >= MinHebrewLength ? Decision.KeepUnknown(heVerdict) : Decision.Keep(heVerdict);
+            if (lowercaseUnknown && he.Length >= MinHebrewLength) return Decision.KeepUnknown(heVerdict);
+            Decision keep = Decision.Keep(heVerdict);
+            if (he.Length < MinHebrewLength && heValidDict)
+            {
+                keep.KeptDueToLength = true;
+                keep.PendingTarget = Lang.Hebrew;
+                keep.PendingText = hebrew;
+            }
+            return keep;
         }
 
         // Typed while the Hebrew layout was active: did they mean English?
@@ -182,7 +197,8 @@ namespace LangFixer
 
             // If they meant English, a trailing , . ; ' is punctuation ("hello," typed in Hebrew).
             string en = TrimTrailing(english);
-            bool enValid = en.Length >= MinEnglishLength && _dict.IsValidEnglish(en);
+            bool enValidDict = _dict.IsValidEnglish(en);
+            bool enValid = en.Length >= MinEnglishLength && enValidDict;
             // The English dictionary accepts obscure short entries ("hyuk"), and a Hebrew slip of 4-5 letters spells
             // one now and then (יטולת -> "hyuk,"). Short English targets must be everyday words; 6+ letters need not.
             if (enValid && en.Length < 6 && !CommonWords.English.Contains(en))
@@ -213,7 +229,15 @@ namespace LangFixer
             if (corrected != null)
                 return Decision.To(Lang.Hebrew, corrected + heTrail, "spelling: '" + he + "' -> '" + corrected + "'");
             string enVerdict = en.Length < MinEnglishLength ? "English too short" : "not English" + Err();
-            return en.Length >= MinEnglishLength && he.Length >= 2 ? Decision.KeepUnknown(enVerdict) : Decision.Keep(enVerdict);
+            if (en.Length >= MinEnglishLength && he.Length >= 2) return Decision.KeepUnknown(enVerdict);
+            Decision keep = Decision.Keep(enVerdict);
+            if (en.Length < MinEnglishLength && enValidDict && en != "i" && en != "I" && en != "a" && en != "A")
+            {
+                keep.KeptDueToLength = true;
+                keep.PendingTarget = Lang.English;
+                keep.PendingText = english;
+            }
+            return keep;
         }
 
         /// <summary>
