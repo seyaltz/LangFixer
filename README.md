@@ -12,7 +12,9 @@ rest of the sentence comes out right.
 Single `LangFixer.exe`, no installer, no runtime to install (uses the .NET Framework 4.8
 that ships with Windows 10/11).
 
-**Video walkthroughs** on the [latest release](https://github.com/seyaltz/LangFixer/releases/latest),
+**Download** the latest `LangFixer.exe` from the [latest release](https://github.com/seyaltz/LangFixer/releases/latest) (v1.2).
+
+**Video walkthroughs** on the [v1.0 release](https://github.com/seyaltz/LangFixer/releases/tag/v1.0),
 each narrated with subtitles burned in and a `.vtt` plus transcript alongside; every live step is read
 back from Notepad through UI Automation and asserted, and the pipeline is in `video/`:
 
@@ -48,6 +50,12 @@ a mouse click or a window switch clears the word buffer, and Hebrew targets shor
 3 letters are not auto-converted: 159 of the 676 two-letter combinations spell real Hebrew
 words, including `js`, `ts`, `sh`, `ps`, `st`, `th`. The one-letter English words `I` and
 `a` typed in Hebrew layout (`ן`, `ש`) are converted.
+
+**Retroactive fix for short words.** A 2-letter word that was kept because it fell below
+the minimum length is retroactively fixed when the *next* word confirms the language
+direction. Typing `nv eurv ` (English layout) produces `מה קורה `: `nv` alone is too
+short to judge, but once `eurv` converts to קורה the tool goes back and converts `nv` →
+מה too. The same works in reverse (Hebrew → English).
 
 Implementation notes that cost real debugging time:
 
