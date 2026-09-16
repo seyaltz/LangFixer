@@ -40,7 +40,7 @@ namespace LangFixer
             "speak","call","called","text","write","wrote","read","send","sent","reply","answer","know","knew","think",
             "thought","mean","meant","feel","felt","find","found","try","tried","use","used","work","works","worked",
             "working","play","run","runs","ran","running","move","keep","kept","hold","turn","open","close","closed",
-            "check","checked","fix","fixed","test","tested","build","built","change","changed","add","added","remove",
+            "check","checked","fix","fixed","test","tested","build","built","change","changed","add","added","remove","fun",
             "delete","update","updated","create","created","save","saved","load","copy","paste","cut","search","print",
             "help","learn","teach","study","buy","sell","pay","paid","cost","free","cheap","order","book","booked",
             "flight","flights","hotel","hotels","room","rooms","trip","travel","ticket","tickets","price","prices",
