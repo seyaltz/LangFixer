@@ -43,6 +43,7 @@ the sentence comes out right, with no user action.
 | F4 | Dictionaries: the Windows spell checkers (`ISpellChecker`, `en-US` and `he-IL`). If one is missing, fall back to structural rules and tell the user (balloon tip + dashboard status). |
 | F5 | Trailing punctuation: `akuo,` → `שלום,`; `akuo/` → `שלום.`; `hello,` typed in Hebrew → `hello,`. Trim a trailing char only when the key is punctuation in **both** layouts (section 5.3). |
 | F6 | Hebrew targets shorter than 3 letters are never auto-converted. The one-letter English words `I`/`a` typed in Hebrew (`ן`/`ש`) are converted. |
+| F15 | Retroactive fix: a 2-letter word kept due to length is retroactively fixed when the next word confirms the language direction (`nv eurv ` → `מה קורה `). |
 | F7 | If the result would read identically to what is already on screen, do nothing (Shift in the Hebrew layout already produces Latin: `IATA`, `LON`). |
 | F8 | Hotkey Ctrl+Alt+H: convert the word being typed / convert the last word left alone / undo the last conversion (section 5.6). Undo adds the original word to the ignore list. |
 | F9 | Persistent lists (section 6): `ignore-words.txt`, `excluded-apps.txt`, `settings.txt`. |
@@ -99,14 +100,24 @@ Rules on every physical key-down:
 4. Word key: `hkl` = layout of the focus thread (5.9). If it is neither English nor Hebrew, clear
    and pass. If the buffer is empty, remember `hkl` as the word's layout; if it differs from the
    word's layout, clear and start a new word. Record `KeyRec{vk, scan, shift = Shift is down,
-   caps = Caps Lock toggled, typed = Render(key, hkl)}`. Clear the undo state. If enabled and not
+   caps = Caps Lock toggled, typed = Render(key, hkl)}`. Clear the undo state **unless** the last
+   action was kept due to length (`KeptDueToLength`): the retroactive fix needs it to survive across
+   the second word's keystrokes. If enabled and not
    excluded and not tainted, **prefetch** a verdict for the buffer so far (5.8). Pass through.
 5. Digit: taint. Pass through.
 6. Separator with a non-empty buffer: snapshot the keys, clear the buffer. If tainted, disabled,
    excluded, or the layouts are incomplete: remember `LastAction = Skipped{keys, layout, sepVk}`
    and pass through. Otherwise ask the DecisionService (5.8) with `typedIn`, `typed`, `english`,
    `hebrew` renderings and a 200 ms timeout. If *keep*: `LastAction = Skipped`, pass through, log
-   the reason. If *fix*: **swallow the separator** (return 1 from the hook), enqueue a rewrite
+   the reason; if the decision has `KeptDueToLength`, copy `KeptDueToLength`, `PendingTarget` and
+   `PendingText` into the `LastAction`. If *fix*: check whether `LastAction` was `Skipped` with
+   `KeptDueToLength` **and** its `PendingTarget` matches this fix's target language. If so, this is a
+   **compound retroactive fix** (F15): enqueue **two** rewrite jobs — the first erases both words plus
+   the separator between them (`backspaces = typed.Length + 1 + prevTyped.Length`), types the
+   retroactive word (`PendingText`), and sends the inter-word separator; the second has zero
+   backspaces, types the current word, and sends the trailing separator. Splitting into two jobs
+   avoids a `VkKeyScanEx` space mid-stream that some apps drop. Otherwise (no retroactive match):
+   **swallow the separator** (return 1 from the hook), enqueue a single rewrite
    (5.7) with `backspaces = typed.Length`, `hkl = target layout`, `text`, `keys`, `sepVk`;
    `LastAction = Fixed{keys, typedLayout, fixedLayout, text, sepVk}`; increment the fix counter.
 7. Separator with an empty buffer: **no-op** (buffer and undo state untouched, so Ctrl+Alt+H still
@@ -168,10 +179,13 @@ heRepaired = CrossLayoutRepair(Hebrew, he)                # 5.5b: "chsev" -> ב�
 if heRepaired                  -> FIX Hebrew, text = heRepaired + hebrew[len(he):]   ("cross-layout typo")
 if corrected                   -> FIX English, text = corrected + trail   # weak, aggressive mode only
 keep ("Hebrew too short" | "not Hebrew"), Unknown = lowercaseUnknown and len(he) >= 3
+     if kept because len(he) < 3 AND IsValidHebrew(he):
+         KeptDueToLength = true, PendingTarget = Hebrew, PendingText = hebrew
 ```
 
 The Hebrew branch mirrors this with `CrossLayoutRepair(English, en)` after the `enValid` check
-("hlelo" typed on the Hebrew layout → `hello`).
+("hlelo" typed on the Hebrew layout → `hello`). Its keep also carries pending fields when
+`len(en) < MinEnglishLength AND IsValidEnglish(en)` (excluding `i`/`a` which already convert).
 
 ### 5.5b Cross-layout typo repair
 
@@ -284,9 +298,11 @@ Runs on its own thread, one job at a time, from a queue. A job is
 1. **Wait until Ctrl, Alt, Shift and Win are all physically up** (poll `GetAsyncKeyState`, up to
    1.5 s, then proceed anyway rather than drop the job). A hotkey-triggered job starts while
    Ctrl+Alt are still held, and Alt+Backspace is Undo in Notepad: the first backspace was being eaten.
-2. Send `backspaces` × (Backspace down, up) in one `SendInput` batch. **Sleep ~80 ms**: without it
-   the text control drops the first key that follows the burst (`teh` came out as `he` once the
-   layout-switch settle no longer covered same-layout rewrites).
+2. Send each backspace individually (one `SendInput` call per down/up pair, **~20 ms** between
+   each). ConPTY-backed terminals (Windows Terminal) drop keys from large bursts; compound
+   retroactive fixes erase 7+ characters and a single batch lost most of them. After all
+   backspaces are sent, **sleep ~80 ms** before typing: without it the text control drops the
+   first key that follows.
 3. If `hkl` given and the focus thread is **already** on `hkl` (a spelling fix; an undo after a
    failed switch): skip this whole step, no reset window occurs. Otherwise post
    `WM_INPUTLANGCHANGEREQUEST` (0x0050, wParam 0, lParam = hkl) to the focus
@@ -465,6 +481,8 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 | `LON`, `DEADLOCK` (Shift) | Hebrew | keep | already reads as target |
 | `please` | Hebrew | fix → `please` | |
 | `aui` | English | fix → `שון`; after adding `aui` to ignore list → keep | learning |
+| `nv` | English | keep, KeptDueToLength=true, PendingTarget=Hebrew, PendingText=`מה` | valid Hebrew but too short |
+| `qq` | English | keep, KeptDueToLength=false | not valid Hebrew, no pending |
 | autocorrect **off**: `teh` | English | fix → `אקי` | permissive Hebrew checker (documented) |
 | autocorrect **on**: `teh` / `teh,` / `helo` / `hwllo` | English | fix → `the` / `the,` / `hello` / `hello` | |
 | autocorrect on: `akuo` | English | fix → `שלום` (not `akua`) | layout wins over weak typo |
@@ -527,10 +545,11 @@ eurv␣    -> + "קורה "                                  Hebrew   (layout be
 (harness switches the layout back to English)
 chsev␣   -> + "בדיקה "                                 Hebrew   (cross-layout typo repair)
 (harness switches the layout back to English)
+nv␣eurv␣ -> + "מה קורה "                               Hebrew   (retroactive compound fix: nv alone was too short)
 akuo, then Ctrl+Alt+H (no separator) -> + "שלום,"      Hebrew
 ```
 
-47 checks = 23 steps × (document text + focus-thread layout) + 1 precondition; all must pass on an idle desktop.
+49 checks = 23 steps × (document text + focus-thread layout) + 1 precondition; all must pass on an idle desktop.
 
 ## 10. Recommended order of work (TDD)
 
@@ -550,3 +569,4 @@ akuo, then Ctrl+Alt+H (no separator) -> + "שלום,"      Hebrew
 - The driver prints `ALL PASSED` (45 checks) against a fresh Notepad tab.
 - Typing `akuo nv akunl ` in Notepad with the English layout active produces `שלום מה שלומך ` and
   leaves the layout on Hebrew; typing `hello ` then produces `hello ` and switches back.
+- Typing `nv eurv ` produces `מה קורה ` (retroactive compound fix).
