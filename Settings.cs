@@ -17,6 +17,7 @@ namespace LangFixer
         public readonly string IgnorePath;
         public readonly string ExcludedPath;
         public readonly string SettingsPath;
+        public readonly string AbbreviationsPath;
 
         /// <summary>Auto-correct typos with a typing signature (swapped adjacent letters, neighbouring key). Off by default.</summary>
         public volatile bool AutoCorrect;
@@ -39,6 +40,7 @@ namespace LangFixer
         private readonly object _lock = new object();
         private readonly HashSet<string> _ignore = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private Dictionary<string, string> _abbrev = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         private static readonly string[] DefaultIgnore =
         {
@@ -51,6 +53,14 @@ namespace LangFixer
             "kotlin", "lombok", "redis", "kafka", "nginx", "tomcat", "docker", "ubuntu", "linux", "wsl", "hkl", "svc", "ref",
             "refs", "repo", "repos", "cron", "sudo", "chmod", "grep", "awk", "sed", "ls", "cd", "rm", "mkdir", "curl", "wget",
             "localhost", "stg", "qa", "ok", "lol", "btw", "fyi", "asap", "tbd", "wip", "lgtm", "pr", "prs", "ci", "cd"
+        };
+
+        private static readonly string[] DefaultAbbreviations =
+        {
+            "# Type the left side, get the right side on Space/Enter/Tab.",
+            "# One pair per line, abbreviation=expansion. Examples:",
+            "# pg=postgres",
+            "# k8s=kubernetes"
         };
 
         private static readonly string[] DefaultExcluded =
@@ -73,11 +83,13 @@ namespace LangFixer
             IgnorePath = Path.Combine(Dir, "ignore-words.txt");
             ExcludedPath = Path.Combine(Dir, "excluded-apps.txt");
             SettingsPath = Path.Combine(Dir, "settings.txt");
+            AbbreviationsPath = Path.Combine(Dir, "abbreviations.txt");
             try
             {
                 Directory.CreateDirectory(Dir);
                 if (!File.Exists(IgnorePath)) File.WriteAllLines(IgnorePath, DefaultIgnore, Encoding.UTF8);
                 if (!File.Exists(ExcludedPath)) File.WriteAllLines(ExcludedPath, DefaultExcluded, Encoding.UTF8);
+                if (!File.Exists(AbbreviationsPath)) File.WriteAllLines(AbbreviationsPath, DefaultAbbreviations, Encoding.UTF8);
             }
             catch { }
             Reload();
@@ -85,9 +97,15 @@ namespace LangFixer
 
         /// <summary>In-memory only, for tests.</summary>
         public Settings(IEnumerable<string> ignore, IEnumerable<string> excluded)
+            : this(ignore, excluded, new Dictionary<string, string>()) { }
+
+        /// <summary>In-memory only, for tests.</summary>
+        public Settings(IEnumerable<string> ignore, IEnumerable<string> excluded, Dictionary<string, string> abbreviations)
         {
             foreach (var w in ignore) _ignore.Add(w);
             foreach (var a in excluded) _excluded.Add(a);
+            if (abbreviations != null)
+                foreach (var kv in abbreviations) _abbrev[kv.Key] = kv.Value;
         }
 
         public void Reload()
@@ -96,6 +114,7 @@ namespace LangFixer
             {
                 Load(IgnorePath, _ignore);
                 Load(ExcludedPath, _excluded);
+                LoadAbbreviations();
             }
             LoadSettings();
         }
@@ -210,6 +229,34 @@ namespace LangFixer
         {
             if (processName.Length == 0) return false;
             lock (_lock) return _excluded.Contains(processName);
+        }
+
+        public bool TryGetAbbreviation(string word, out string expansion)
+        {
+            lock (_lock) return _abbrev.TryGetValue(word, out expansion);
+        }
+
+        private void LoadAbbreviations()
+        {
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (AbbreviationsPath != null)
+            {
+                try
+                {
+                    foreach (var raw in File.ReadAllLines(AbbreviationsPath, Encoding.UTF8))
+                    {
+                        string line = raw.Trim();
+                        if (line.Length == 0 || line.StartsWith("#")) continue;
+                        int eq = line.IndexOf('=');
+                        if (eq <= 0) continue;
+                        string key = line.Substring(0, eq).Trim();
+                        string val = line.Substring(eq + 1).Trim();
+                        if (key.Length > 0 && val.Length > 0) dict[key] = val;
+                    }
+                }
+                catch { }
+            }
+            _abbrev = dict;
         }
 
         // ---- process name of a window ----

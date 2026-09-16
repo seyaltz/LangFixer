@@ -46,12 +46,13 @@ the sentence comes out right, with no user action.
 | F15 | Retroactive fix: a 2-letter word kept due to length is retroactively fixed when the next word confirms the language direction (`nv eurv ` → `מה קורה `). |
 | F7 | If the result would read identically to what is already on screen, do nothing (Shift in the Hebrew layout already produces Latin: `IATA`, `LON`). |
 | F8 | Hotkey Ctrl+Alt+H: convert the word being typed / convert the last word left alone / undo the last conversion (section 5.6). Undo adds the original word to the ignore list. |
-| F9 | Persistent lists (section 6): `ignore-words.txt`, `excluded-apps.txt`, `settings.txt`. |
+| F9 | Persistent lists (section 6): `ignore-words.txt`, `excluded-apps.txt`, `settings.txt`, `abbreviations.txt`. |
 | F10 | Never judge: words containing digits, keys pressed with Ctrl/Alt/Win held, typing in excluded apps. A mouse click or a foreground-window change clears the word buffer and the undo state. |
 | F11 | Optional spelling autocorrect, off by default (section 5.5). Grammar is out of scope. |
 | F12 | Tray icon + dashboard (section 7). |
 | F13 | Own output must never be re-processed by the hook; keys the user types during a rewrite must not interleave with it (section 5.7). |
 | F14 | Privacy: keep only the current word in memory; write keystrokes to disk only in `--debug`. |
+| F16 | Custom abbreviation expansion: a user-editable file (`abbreviations.txt`) maps short forms to full words (`pg=postgres`). Checked at the top of the decision logic before layout/spelling analysis. The ignore list suppresses an abbreviation. Target language is auto-detected (Hebrew chars → Hebrew, otherwise English). |
 
 ## 4. Architecture (one file per box is a good split)
 
@@ -153,6 +154,12 @@ Structural rules (SpellCheck):
 - `IsValidHebrew(w)` = structurally Hebrew AND (spell checker reports no error, or when missing: true).
 
 `Decide(typedIn, typed, english, hebrew)`:
+
+**Abbreviation check (before any layout/spelling logic):** trim trailing punctuation from both
+renderings (`en = TrimTrailing(english)`, `he = TrimTrailingAligned(hebrew, english)`). For each
+trimmed rendering, if it is not in the ignore list and is found in the abbreviation map, return
+FIX with `target = DetectLang(expansion)` (Hebrew if any char is U+0590–U+05FF, else English),
+`text = expansion + trailing punctuation`. Check the English rendering first.
 
 **Typed while English layout was active** (did they mean Hebrew?):
 
@@ -368,6 +375,11 @@ differs, `tid = thread of hwndFocus`; `GetKeyboardLayout(tid)`.
   VirtualBoxVM.exe Code.exe "Code - Insiders.exe" devenv.exe idea64.exe rider64.exe pycharm64.exe
   webstorm64.exe datagrip64.exe goland64.exe clion64.exe dbeaver.exe pgAdmin4.exe cursor.exe
   windbg.exe`. Do **not** exclude general text editors (Notepad++, Sublime): people write notes there.
+- `abbreviations.txt` — `key=expansion` lines, `#` comments, case-insensitive key lookup. On
+  first run seed with commented-out examples only (`# pg=postgres`, `# k8s=kubernetes`). Loaded
+  in `Reload()`, guarded by the same lock as the other lists. `TryGetAbbreviation(word, out expansion)`
+  returns the expansion or false. The ignore list takes priority: if a word is ignored, its
+  abbreviation is not expanded.
 - `settings.txt` — `key=value` lines: `autocorrect`, `autocorrect_aggressive`, `autocorrect_hebrew`
   (all default 0) and `names_guard` (default 1). Every option is a dashboard checkbox.
 - `log.txt` — only with `--debug`: `HH:mm:ss.fff auto-fix: <reason> 'typed' -> 'text' [process]` /
@@ -385,8 +397,8 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 - **Tray icon** (drawn at runtime: blue disc with `א` and `A`): left-click opens the dashboard;
   context menu: Open dashboard, Auto-fix enabled (check), Auto-correct spelling (check), Start with
   Windows (check; `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value = exe path +
-  ` --minimized`), Edit ignored words…, Edit excluded apps… (open in Notepad, reload on exit),
-  Reload lists, Exit.
+  ` --minimized`), Edit ignored words…, Edit excluded apps…, Edit abbreviations… (open in Notepad,
+  reload on exit), Reload lists, Exit.
 - **Dashboard** (≈560×500): status line (`Running`/`Stopped — nothing is changed`), Start/Stop
   button, dictionary + layout status, words-fixed counter, live decision feed (last ~200 log
   lines, refreshed by a timer), checkboxes for autocorrect and start with Windows, buttons for the
@@ -506,6 +518,10 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 | QWERTY neighbours: (w,e) yes, (s,w) yes, (o,a) no | | | |
 | Sweep: with the 3-letter minimum, **0 of 676** two-letter English-layout strings convert; with a 2-letter minimum, 159 do | | | |
 | DecisionService: `akuo` via the worker thread → fix; after `Prefetch`, `Decide` is served **from the cache** (assert the cache hit, not a timing: the un-prefetched round trip is sub-millisecond too) | | | |
+| abbreviation `pg=postgres`: `pg` | English | fix → `postgres` (target English) | abbreviation expansion |
+| abbreviation lookup is case-insensitive: `PG` → `postgres` | | | |
+| abbreviation `pg` after `AddIgnoredWord("pg")` | English | keep | ignore list suppresses abbreviation |
+| `DetectLang("postgres")` = English; `DetectLang("שלום")` = Hebrew | | | |
 
 ### 9.4 End-to-end in Notepad (driver)
 

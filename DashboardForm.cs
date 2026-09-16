@@ -124,6 +124,7 @@ namespace LangFixer
             int x = 22;
             x = AddButton("Ignored words...", x, delegate { OpenFile(_settings.IgnorePath); });
             x = AddButton("Excluded apps...", x, delegate { OpenFile(_settings.ExcludedPath); });
+            x = AddButton("Abbreviations...", x, delegate { OpenFile(_settings.AbbreviationsPath); });
             x = AddButton("Open log folder", x, delegate { try { Process.Start("explorer.exe", "\"" + _settings.Dir + "\""); } catch { } });
             AddButton("Hide to tray", x, delegate { Hide(); });
 

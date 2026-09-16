@@ -127,6 +127,21 @@ grammar; that needs a language model.
 - Right after an auto-fix: undo it (restores the original text and layout) **and** adds the
   word to the ignore list so it is never auto-converted again.
 
+## Custom abbreviations
+
+Type a short abbreviation and it expands to the full word on Space/Enter/Tab, like a text
+expander. Stored in `%LOCALAPPDATA%\LangFixer\abbreviations.txt`, one pair per line:
+
+```
+pg=postgres
+k8s=kubernetes
+```
+
+Edit the file from the tray menu ("Edit abbreviations...") or the dashboard button
+("Abbreviations..."). Comments (`#`) and blank lines are allowed. Adding a word to the
+ignore list (Ctrl+Alt+H undo) suppresses its abbreviation expansion. Abbreviation lookup
+is case-insensitive; expansions can be English or Hebrew.
+
 ## Lists (in `%LOCALAPPDATA%\LangFixer`)
 
 - `ignore-words.txt`: words never auto-converted. Seeded with tech tokens the Windows
@@ -134,6 +149,8 @@ grammar; that needs a language model.
   Every undo appends to it. Edit from the tray menu; the file is reloaded when Notepad closes.
 - `excluded-apps.txt`: process names where auto-fix is off (terminals and IDEs by default,
   where most "words" are identifiers). The hotkey still works there.
+- `abbreviations.txt`: custom abbreviation expansions (`pg=postgres`). Seeded with
+  commented-out examples on first run.
 
 ## Dashboard and tray
 

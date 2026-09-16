@@ -148,6 +148,7 @@ namespace LangFixer
             menu.MenuItems.Add("-");
             menu.MenuItems.Add(new MenuItem("Edit ignored words...", delegate { OpenAndReload(_settings.IgnorePath); }));
             menu.MenuItems.Add(new MenuItem("Edit excluded apps...", delegate { OpenAndReload(_settings.ExcludedPath); }));
+            menu.MenuItems.Add(new MenuItem("Edit abbreviations...", delegate { OpenAndReload(_settings.AbbreviationsPath); }));
             menu.MenuItems.Add(new MenuItem("Reload lists", delegate { _settings.Reload(); _decisions.ClearCache(); }));
             menu.MenuItems.Add("-");
             menu.MenuItems.Add(new MenuItem("Exit", delegate { Application.Exit(); }));

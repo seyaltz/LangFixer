@@ -235,6 +235,33 @@ namespace LangFixer
                 Check(d2.Fix && d2.Text == "hello", "DecisionService: prefetched verdict served from cache with zero wait");
             }
 
+            // Abbreviation expansion
+            var abbrMap = new Dictionary<string, string> { { "pg", "postgres" }, { "k8s", "kubernetes" } };
+            var abbrSettings = new Settings(new[] { "api" }, new string[0], abbrMap);
+            var abbrDet = new Detector(dict, abbrSettings);
+            string abbrOut;
+            Check(abbrSettings.TryGetAbbreviation("pg", out abbrOut) && abbrOut == "postgres", "abbreviation lookup: pg -> postgres");
+            Check(abbrSettings.TryGetAbbreviation("PG", out abbrOut) && abbrOut == "postgres", "abbreviation lookup is case-insensitive");
+            Check(!abbrSettings.TryGetAbbreviation("xyz", out abbrOut), "abbreviation lookup: xyz not found");
+            var abbrKeys = Keys("pg", layouts.English);
+            var abbrDec = abbrDet.Decide(Lang.English, Layouts.Typed(abbrKeys), Layouts.Render(abbrKeys, layouts.English), Layouts.Render(abbrKeys, layouts.Hebrew));
+            Check(abbrDec.Fix && abbrDec.Text == "postgres", "abbreviation decision: pg -> postgres  [" + abbrDec.Reason + "]");
+            Check(abbrDec.Target == Lang.English, "abbreviation target: postgres is English");
+            // Ignored word suppresses abbreviation
+            var abbrMap2 = new Dictionary<string, string> { { "pg", "postgres" } };
+            var abbrSettings2 = new Settings(new string[0], new string[0], abbrMap2);
+            abbrSettings2.AddIgnoredWord("pg");
+            var abbrDet2 = new Detector(dict, abbrSettings2);
+            var pgKeys2 = Keys("pg", layouts.English);
+            var pgDec2 = abbrDet2.Decide(Lang.English, Layouts.Typed(pgKeys2), Layouts.Render(pgKeys2, layouts.English), Layouts.Render(pgKeys2, layouts.Hebrew));
+            Check(!pgDec2.Fix || pgDec2.Text != "postgres", "ignored word suppresses abbreviation: pg after AddIgnoredWord -> no expansion  [" + pgDec2.Reason + "]");
+            // Abbreviation with Hebrew expansion
+            var heAbbrMap = new Dictionary<string, string> { { "sl", "\u05E9\u05DC\u05D5\u05DD" } }; // sl -> שלום
+            var heAbbrSettings = new Settings(new string[0], new string[0], heAbbrMap);
+            var heAbbrDet = new Detector(dict, heAbbrSettings);
+            Check(Detector.DetectLang("postgres") == Lang.English, "DetectLang: postgres is English");
+            Check(Detector.DetectLang("\u05E9\u05DC\u05D5\u05DD") == Lang.Hebrew, "DetectLang: shalom is Hebrew");
+
             // Risk sweep: which 2- and 3-letter English-layout strings would convert?
             Sweep(det, layouts, 2);
             Sweep(det, layouts, 3, 400);

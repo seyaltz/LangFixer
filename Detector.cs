@@ -82,6 +82,14 @@ namespace LangFixer
             return s.Substring(0, end);
         }
 
+        /// <summary>If the string contains any Hebrew character (U+0590–U+05FF), it is Hebrew; otherwise English.</summary>
+        public static Lang DetectLang(string s)
+        {
+            foreach (char c in s)
+                if (c >= '\u0590' && c <= '\u05FF') return Lang.Hebrew;
+            return Lang.English;
+        }
+
         /// <summary>
         /// Text for a forced (hotkey) conversion, no dictionary involved. Going to Hebrew, a trailing key that is
         /// punctuation in English but a letter in Hebrew (the , key is ת) stays punctuation: "akuo," becomes "שלום,".
@@ -105,6 +113,14 @@ namespace LangFixer
         /// <param name="prevUnknown">The previous word was kept because it fails both dictionaries (names guard input).</param>
         public Decision Decide(Lang typedIn, string typed, string english, string hebrew, bool prevUnknown = false)
         {
+            string en = TrimTrailing(english);
+            string he = TrimTrailingAligned(hebrew, english);
+            string abbr;
+            if (!_settings.IsIgnoredWord(en) && _settings.TryGetAbbreviation(en, out abbr))
+                return Decision.To(DetectLang(abbr), abbr + english.Substring(en.Length), "abbreviation: '" + en + "' -> '" + abbr + "'");
+            if (!_settings.IsIgnoredWord(he) && _settings.TryGetAbbreviation(he, out abbr))
+                return Decision.To(DetectLang(abbr), abbr + hebrew.Substring(he.Length), "abbreviation: '" + he + "' -> '" + abbr + "'");
+
             Decision d;
             if (typedIn == Lang.English) d = EnglishLayout(english, hebrew, prevUnknown);
             else if (typedIn == Lang.Hebrew) d = HebrewLayout(english, hebrew, prevUnknown);
