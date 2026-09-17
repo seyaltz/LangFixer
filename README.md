@@ -12,7 +12,7 @@ rest of the sentence comes out right.
 Single `LangFixer.exe`, no installer, no runtime to install (uses the .NET Framework 4.8
 that ships with Windows 10/11).
 
-**Download** the latest `LangFixer.exe` from the [latest release](https://github.com/seyaltz/LangFixer/releases/latest) (v1.3).
+**Download** the latest `LangFixer.exe` from the [latest release](https://github.com/seyaltz/LangFixer/releases/latest) (v1.4).
 
 **Video walkthroughs** on the [v1.0 release](https://github.com/seyaltz/LangFixer/releases/tag/v1.0),
 each narrated with subtitles burned in and a `.vtt` plus transcript alongside; every live step is read
@@ -163,6 +163,11 @@ Tray menu: **Open dashboard**, **Auto-fix enabled**, **Start with Windows** (HKC
 with `--minimized`), dictionary status, list editors, **Exit**.
 
 `LangFixer.exe --minimized` starts straight into the tray without the dashboard.
+
+**Auto-update.** Click "Check for updates" in the dashboard or tray menu. LangFixer checks
+GitHub for a newer release, and if one exists, downloads the exe, replaces itself in place
+(Windows allows renaming a running exe), and restarts. The old exe is cleaned up on next
+startup. No manual download or replacement needed.
 
 If the English or Hebrew spell checker is missing Windows shows a balloon tip at startup.
 Install it via Settings > Time & language > Language > (language) > Options > Basic typing.
