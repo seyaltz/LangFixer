@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -60,6 +61,7 @@ namespace LangFixer
         private Icon _icon;
         private bool _hotkeyOk;
         private bool _started;
+        private static Mutex _mutex;
 
         public TrayApp(bool debug, bool acceptInjected, bool startMinimized)
         {
@@ -127,7 +129,7 @@ namespace LangFixer
         private void BuildTray()
         {
             _icon = MakeIcon();
-            _dashboard = new DashboardForm(_engine, _settings, _dict, _layouts, _icon, SetEnabled, IsStartup, SetStartup, SetOption);
+            _dashboard = new DashboardForm(_engine, _settings, _dict, _layouts, _icon, SetEnabled, IsStartup, SetStartup, SetOption, CheckForUpdates);
             _dashboard.Text = DashboardTitle;
 
             var menu = new ContextMenu();
@@ -150,13 +152,14 @@ namespace LangFixer
             menu.MenuItems.Add(new MenuItem("Edit excluded apps...", delegate { OpenAndReload(_settings.ExcludedPath); }));
             menu.MenuItems.Add(new MenuItem("Edit abbreviations...", delegate { OpenAndReload(_settings.AbbreviationsPath); }));
             menu.MenuItems.Add(new MenuItem("Reload lists", delegate { _settings.Reload(); _decisions.ClearCache(); }));
+            menu.MenuItems.Add(new MenuItem("Check for updates", delegate { CheckForUpdates(); }));
             menu.MenuItems.Add("-");
             menu.MenuItems.Add(new MenuItem("Exit", delegate { Application.Exit(); }));
 
             _tray = new NotifyIcon
             {
                 Icon = _icon,
-                Text = AppName + " - running",
+                Text = AppName + " v" + Updater.CurrentVersion + " - running",
                 ContextMenu = menu,
                 Visible = true
             };
@@ -216,7 +219,7 @@ namespace LangFixer
             _engine.Enabled = on;
             if (!on) _engine.ResetAll();
             _enabledItem.Checked = on;
-            _tray.Text = AppName + (on ? " - running" : " - stopped");
+            _tray.Text = AppName + " v" + Updater.CurrentVersion + (on ? " - running" : " - stopped");
             Log(on ? "auto-fix started" : "auto-fix stopped");
             if (_dashboard != null) _dashboard.UpdateState();
         }
@@ -296,6 +299,82 @@ namespace LangFixer
             base.WndProc(ref m);
         }
 
+        private void CheckForUpdates()
+        {
+            ShowDashboard();
+            if (_dashboard != null) _dashboard.ShowUpdateStatus("Checking for updates...");
+            new Thread(delegate()
+            {
+                try
+                {
+                    var result = Updater.CheckForUpdate();
+                    BeginInvoke(new Action(delegate
+                    {
+                        if (result == null)
+                        {
+                            if (_dashboard != null) _dashboard.ShowUpdateStatus("You're up to date (v" + Updater.CurrentVersion + ").");
+                        }
+                        else
+                        {
+                            if (_dashboard != null) _dashboard.ShowUpdateStatus("New version available: " + result[0]);
+                            var answer = MessageBox.Show(this,
+                                "A new version (" + result[0] + ") is available. Install now?",
+                                AppName + " Update", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                            if (answer == DialogResult.Yes)
+                                PerformUpdate(result[1]);
+                            else if (_dashboard != null)
+                                _dashboard.ShowUpdateStatus("Update skipped. v" + Updater.CurrentVersion);
+                        }
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    try { BeginInvoke(new Action(delegate
+                    {
+                        if (_dashboard != null) _dashboard.ShowUpdateStatus("Update check failed: " + ex.Message);
+                    })); } catch { }
+                }
+            }) { IsBackground = true }.Start();
+        }
+
+        private void PerformUpdate(string url)
+        {
+            if (_dashboard != null) _dashboard.ShowUpdateStatus("Downloading update...");
+            new Thread(delegate()
+            {
+                try
+                {
+                    string exePath = Process.GetCurrentProcess().MainModule.FileName;
+                    Updater.DownloadAndReplace(url, delegate(int pct)
+                    {
+                        try { BeginInvoke(new Action(delegate
+                        {
+                            if (_dashboard != null) _dashboard.ShowUpdateStatus("Downloading... " + pct + "%");
+                        })); } catch { }
+                    });
+                    BeginInvoke(new Action(delegate
+                    {
+                        if (_dashboard != null) _dashboard.ShowUpdateStatus("Restarting...");
+                        _hooks.Dispose();
+                        _engine.Injector.Dispose();
+                        _decisions.Dispose();
+                        if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
+                        if (_dashboard != null) _dashboard.Dispose();
+                        if (_log != null) _log.Dispose();
+                        if (_mutex != null) { try { _mutex.ReleaseMutex(); } catch { } _mutex.Dispose(); _mutex = null; }
+                        Updater.Restart(exePath);
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    try { BeginInvoke(new Action(delegate
+                    {
+                        if (_dashboard != null) _dashboard.ShowUpdateStatus("Update failed: " + ex.Message);
+                    })); } catch { }
+                }
+            }) { IsBackground = true }.Start();
+        }
+
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             _hooks.Dispose();
@@ -327,8 +406,11 @@ namespace LangFixer
             }
             if (test) { SelfTest.Run(); return; }
 
+            Updater.CleanupOldExe();
+
             bool created;
-            using (var mutex = new Mutex(true, "Local\\LangFixer.SingleInstance", out created))
+            _mutex = new Mutex(true, "Local\\LangFixer.SingleInstance", out created);
+            try
             {
                 if (!created)
                 {
@@ -343,6 +425,10 @@ namespace LangFixer
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new TrayApp(debug, acceptInjected, minimized));
+            }
+            finally
+            {
+                if (_mutex != null) { try { _mutex.ReleaseMutex(); } catch { } _mutex.Dispose(); }
             }
         }
     }

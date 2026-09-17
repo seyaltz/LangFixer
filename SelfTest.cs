@@ -270,6 +270,21 @@ namespace LangFixer
             Line("     --- if MinHebrewLength were 2 ---");
             Sweep(det2, layouts, 2);
 
+            // Updater: version comparison
+            Check(Updater.IsNewer("v1.4", "1.3"), "version: v1.4 > 1.3");
+            Check(Updater.IsNewer("v2.0", "1.9"), "version: v2.0 > 1.9");
+            Check(!Updater.IsNewer("v1.3", "1.3"), "version: v1.3 == 1.3");
+            Check(!Updater.IsNewer("v1.2", "1.3"), "version: v1.2 < 1.3");
+            Check(!Updater.IsNewer("garbage", "1.3"), "version: garbage -> false");
+            Check(!Updater.IsNewer("v1.4", "garbage"), "version: local garbage -> false");
+
+            // Updater: JSON extraction
+            string sampleJson = "{\"tag_name\":\"v1.4\",\"assets\":[{\"browser_download_url\":\"https://example.com/LangFixer.exe\"}]}";
+            Check(Updater.ExtractJsonString(sampleJson, "tag_name") == "v1.4", "JSON: extract tag_name");
+            Check(Updater.ExtractJsonString(sampleJson, "browser_download_url") == "https://example.com/LangFixer.exe", "JSON: extract browser_download_url");
+            Check(Updater.ExtractJsonString(sampleJson, "missing_key") == null, "JSON: missing key -> null");
+            Check(Updater.ExtractJsonString(null, "tag_name") == null, "JSON: null input -> null");
+
             Finish();
         }
 

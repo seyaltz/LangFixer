@@ -20,6 +20,7 @@ namespace LangFixer
         private readonly Func<bool> _isStartup;
         private readonly Action<bool> _setStartup;
         private readonly Action<string, bool> _setOption;
+        private readonly Action _checkForUpdates;
         private readonly System.Collections.Generic.List<KeyValuePair<string, CheckBox>> _options = new System.Collections.Generic.List<KeyValuePair<string, CheckBox>>();
 
         private readonly Label _state = new Label();
@@ -28,9 +29,11 @@ namespace LangFixer
         private readonly ListBox _feed = new ListBox();
         private readonly CheckBox _startup = new CheckBox();
         private readonly Timer _refresh = new Timer();
+        private Label _updateStatus;
 
         public DashboardForm(Engine engine, Settings settings, Dictionaries dict, Layouts layouts, Icon icon,
-                             Action<bool> setEnabled, Func<bool> isStartup, Action<bool> setStartup, Action<string, bool> setOption)
+                             Action<bool> setEnabled, Func<bool> isStartup, Action<bool> setStartup, Action<string, bool> setOption,
+                             Action checkForUpdates)
         {
             _engine = engine;
             _settings = settings;
@@ -40,6 +43,7 @@ namespace LangFixer
             _isStartup = isStartup;
             _setStartup = setStartup;
             _setOption = setOption;
+            _checkForUpdates = checkForUpdates;
 
             Text = "LangFixer";
             Icon = icon;
@@ -47,7 +51,7 @@ namespace LangFixer
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(640, 584);
+            ClientSize = new Size(640, 620);
             BackColor = Color.White;
 
             Build();
@@ -128,6 +132,17 @@ namespace LangFixer
             x = AddButton("Open log folder", x, delegate { try { Process.Start("explorer.exe", "\"" + _settings.Dir + "\""); } catch { } });
             AddButton("Hide to tray", x, delegate { Hide(); });
 
+            int x2 = 22;
+            x2 = AddButton("Check for updates", x2, 568, delegate { if (_checkForUpdates != null) _checkForUpdates(); });
+            _updateStatus = new Label
+            {
+                Text = "v" + Updater.CurrentVersion,
+                AutoSize = true,
+                Location = new Point(x2, 573),
+                ForeColor = Color.FromArgb(0x50, 0x50, 0x50)
+            };
+            Controls.Add(_updateStatus);
+
             UpdateState();
         }
 
@@ -142,10 +157,22 @@ namespace LangFixer
 
         private int AddButton(string text, int x, EventHandler onClick)
         {
-            var b = new Button { Text = text, AutoSize = true, Location = new Point(x, 532), FlatStyle = FlatStyle.System };
+            return AddButton(text, x, 532, onClick);
+        }
+
+        private int AddButton(string text, int x, int y, EventHandler onClick)
+        {
+            var b = new Button { Text = text, AutoSize = true, Location = new Point(x, y), FlatStyle = FlatStyle.System };
             b.Click += onClick;
             Controls.Add(b);
             return x + b.PreferredSize.Width + 8;
+        }
+
+        public void ShowUpdateStatus(string text)
+        {
+            if (_updateStatus == null) return;
+            if (InvokeRequired) { try { BeginInvoke(new Action<string>(ShowUpdateStatus), text); } catch { } return; }
+            _updateStatus.Text = text;
         }
 
         private void OpenFile(string path)
