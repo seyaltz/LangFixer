@@ -271,12 +271,12 @@ namespace LangFixer
             Sweep(det2, layouts, 2);
 
             // Updater: version comparison
-            Check(Updater.IsNewer("v1.4", "1.3"), "version: v1.4 > 1.3");
+            Check(Updater.IsNewer("v1.5", "1.4"), "version: v1.5 > 1.4");
             Check(Updater.IsNewer("v2.0", "1.9"), "version: v2.0 > 1.9");
-            Check(!Updater.IsNewer("v1.3", "1.3"), "version: v1.3 == 1.3");
-            Check(!Updater.IsNewer("v1.2", "1.3"), "version: v1.2 < 1.3");
-            Check(!Updater.IsNewer("garbage", "1.3"), "version: garbage -> false");
-            Check(!Updater.IsNewer("v1.4", "garbage"), "version: local garbage -> false");
+            Check(!Updater.IsNewer("v1.4", "1.4"), "version: v1.4 == 1.4");
+            Check(!Updater.IsNewer("v1.3", "1.4"), "version: v1.3 < 1.4");
+            Check(!Updater.IsNewer("garbage", "1.4"), "version: garbage -> false");
+            Check(!Updater.IsNewer("v1.5", "garbage"), "version: local garbage -> false");
 
             // Updater: JSON extraction
             string sampleJson = "{\"tag_name\":\"v1.4\",\"assets\":[{\"browser_download_url\":\"https://example.com/LangFixer.exe\"}]}";

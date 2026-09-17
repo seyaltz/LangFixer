@@ -8,7 +8,7 @@ namespace LangFixer
 {
     internal static class Updater
     {
-        public const string CurrentVersion = "1.3";
+        public const string CurrentVersion = "1.4";
 
         private const string ReleasesUrl = "https://api.github.com/repos/seyaltz/LangFixer/releases/latest";
         private const long MinExeSize = 10 * 1024; // 10 KB sanity check
