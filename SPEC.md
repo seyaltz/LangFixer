@@ -26,7 +26,7 @@ the sentence comes out right, with no user action.
   `out var`. Compile with `/target:winexe /platform:anycpu /codepage:65001` and reference
   `System.dll System.Drawing.dll System.Windows.Forms.dll`. Put Hebrew literals in source only if
   you pass `/codepage:65001`; otherwise use `\uXXXX` escapes.
-- No installer, no runtime download, no network code at all.
+- No installer, no runtime download. The only network code is the opt-in auto-updater (F17).
 - Data folder: `%LOCALAPPDATA%\LangFixer`, overridable by the `LANGFIXER_HOME` environment variable.
 - Single instance (named mutex). Running the exe again brings the dashboard to the front.
 - Command-line flags: `--test` (offline self-test, no hook), `--debug` (decision log to
@@ -53,6 +53,7 @@ the sentence comes out right, with no user action.
 | F13 | Own output must never be re-processed by the hook; keys the user types during a rewrite must not interleave with it (section 5.7). |
 | F14 | Privacy: keep only the current word in memory; write keystrokes to disk only in `--debug`. |
 | F16 | Custom abbreviation expansion: a user-editable file (`abbreviations.txt`) maps short forms to full words (`pg=postgres`). Checked at the top of the decision logic before layout/spelling analysis. The ignore list suppresses an abbreviation. Target language is auto-detected (Hebrew chars → Hebrew, otherwise English). |
+| F17 | Auto-update: "Check for updates" (dashboard button + tray menu) hits the GitHub releases API, compares the remote tag to an embedded version constant, and if newer: downloads the exe, renames the running exe to `.old`, puts the new one in its place, releases the single-instance mutex, launches the new exe, and exits. The new instance deletes the `.old` file at startup. |
 
 ## 4. Architecture (one file per box is a good split)
 
@@ -69,6 +70,7 @@ Injector      Worker thread performing rewrites (5.7).
 Settings      The three files in the data folder; thread-safe reads.
 TrayApp       Hidden form owning hooks + hotkey; tray icon; single instance; dashboard wiring.
 DashboardForm The small window (section 7).
+Updater       Embedded version, GitHub release check, download-and-replace, restart, old-exe cleanup (5.10).
 SelfTest      `--test` (section 9).
 tools/Driver  End-to-end Notepad test (section 9.4), a separate console exe.
 ```
@@ -360,6 +362,38 @@ made LangFixer believe the text was already Hebrew while the control typed Latin
 `tid = GetWindowThreadProcessId(foreground)`; `GetGUIThreadInfo(tid)`; if `hwndFocus` is set and
 differs, `tid = thread of hwndFocus`; `GetKeyboardLayout(tid)`.
 
+### 5.10 Auto-update (Updater)
+
+Embedded version constant (`CurrentVersion`, e.g. `"1.4"`). All network calls use TLS 1.2
+(`ServicePointManager.SecurityProtocol = Tls12`) and a `WebClient` with a `User-Agent` header.
+
+**Check:** `GET https://api.github.com/repos/seyaltz/LangFixer/releases/latest`. Extract
+`tag_name` and the first `browser_download_url` with a minimal JSON string extractor (no JSON
+library under the C# 5 / csc.exe constraint). `ParseVersion` strips a leading `v`/`V` and
+splits on `.` into major and minor ints. `IsNewer` returns true when the remote version is
+strictly greater. If not newer or on any error → show status, done.
+
+**Download and replace:** download to `<exe>.new` (`DownloadFileAsync` + `ManualResetEvent` so
+progress callbacks can update the dashboard label on the background thread). Validate size
+≥ 10 KB. `File.Move` running exe → `<exe>.old` (Windows allows renaming a running exe), then
+`.new` → original path.
+
+**Restart:** dispose hooks, tray, log, dashboard; release and dispose the single-instance mutex
+(promoted from a local in `Main()` to a `static Mutex` field so the update path can reach it);
+`Process.Start(exePath)`, `Environment.Exit(0)`.
+
+**Cleanup:** `CleanupOldExe()` is called in `Main()` after `--test` but before the mutex: it
+deletes `<exe>.old` if it exists (silently catches failures).
+
+**UI wiring:** TrayApp has a `CheckForUpdates()` method that shows the dashboard, sets the
+status label to "Checking…", spawns a background thread for the API call, and on completion
+either shows "up to date" or prompts with a `MessageBox`. On Yes it calls `PerformUpdate(url)`
+which spawns a background thread for the download with progress, then marshals back to the UI
+thread for the dispose-and-restart sequence. The dashboard exposes `ShowUpdateStatus(string)`
+(thread-safe, same `BeginInvoke` pattern as `Append`). A "Check for updates" button sits on a
+second row (y=568) with a version label beside it; the form height is increased to 620. The
+tray tooltip includes the version (`"LangFixer v1.4 - running"`).
+
 ## 6. Files in the data folder
 
 - `ignore-words.txt` — one word per line, `#` comments, case-insensitive match against the
@@ -398,7 +432,7 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
   context menu: Open dashboard, Auto-fix enabled (check), Auto-correct spelling (check), Start with
   Windows (check; `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value = exe path +
   ` --minimized`), Edit ignored words…, Edit excluded apps…, Edit abbreviations… (open in Notepad,
-  reload on exit), Reload lists, Exit.
+  reload on exit), Reload lists, Check for updates, Exit. Tooltip includes the version.
 - **Dashboard** (≈560×500): status line (`Running`/`Stopped — nothing is changed`), Start/Stop
   button, dictionary + layout status, words-fixed counter, live decision feed (last ~200 log
   lines, refreshed by a timer), checkboxes for autocorrect and start with Windows, buttons for the
@@ -522,6 +556,23 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 | abbreviation lookup is case-insensitive: `PG` → `postgres` | | | |
 | abbreviation `pg` after `AddIgnoredWord("pg")` | English | keep | ignore list suppresses abbreviation |
 | `DetectLang("postgres")` = English; `DetectLang("שלום")` = Hebrew | | | |
+
+### 9.3b Updater vectors
+
+| input | expected | why |
+|---|---|---|
+| `IsNewer("v1.5", "1.4")` | true | newer |
+| `IsNewer("v2.0", "1.9")` | true | major bump |
+| `IsNewer("v1.4", "1.4")` | false | equal |
+| `IsNewer("v1.3", "1.4")` | false | older |
+| `IsNewer("garbage", "1.4")` | false | unparseable remote |
+| `IsNewer("v1.5", "garbage")` | false | unparseable local |
+| `ExtractJsonString(sample, "tag_name")` | `"v1.4"` | basic extraction |
+| `ExtractJsonString(sample, "browser_download_url")` | the URL | nested in array |
+| `ExtractJsonString(sample, "missing_key")` | null | absent key |
+| `ExtractJsonString(null, "tag_name")` | null | null input |
+
+Sample JSON: `{"tag_name":"v1.4","assets":[{"browser_download_url":"https://example.com/LangFixer.exe"}]}`
 
 ### 9.4 End-to-end in Notepad (driver)
 
