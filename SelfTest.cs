@@ -193,6 +193,7 @@ namespace LangFixer
             // Rare short English words do not win over Hebrew (from Eyal's log: יטולת became "hyuk,")
             Decide(acDet, layouts, "hyuk,", Lang.Hebrew, false, "hyuk, typed in Hebrew (a slip of yecholet) -> keep, 'hyuk' is not an everyday word");
             Decide(acDet, layouts, "hyuk", Lang.Hebrew, false, "hyuk -> keep");
+            Decide(det, layouts, "field", Lang.Hebrew, true, "field typed in Hebrew -> fix (5-letter words always convert)");
             Decide(det, layouts, "did", Lang.Hebrew, true, "did typed in Hebrew still fixes (everyday word)");
             Decide(det, layouts, "text", Lang.Hebrew, true, "text typed in Hebrew still fixes");
             Decide(det, layouts, "workflow", Lang.Hebrew, true, "workflow typed in Hebrew still fixes (6+ letters)");

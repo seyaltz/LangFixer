@@ -215,9 +215,9 @@ namespace LangFixer
             string en = TrimTrailing(english);
             bool enValidDict = _dict.IsValidEnglish(en);
             bool enValid = en.Length >= MinEnglishLength && enValidDict;
-            // The English dictionary accepts obscure short entries ("hyuk"), and a Hebrew slip of 4-5 letters spells
-            // one now and then (יטולת -> "hyuk,"). Short English targets must be everyday words; 6+ letters need not.
-            if (enValid && en.Length < 6 && !CommonWords.English.Contains(en))
+            // The English dictionary accepts obscure short entries ("hyuk"), and a Hebrew slip of 4 letters can spell
+            // one (יטולת -> "hyuk,"). Only 4-letter words need the everyday-word check; 5+ letters are almost never false positives.
+            if (enValid && en.Length < 5 && !CommonWords.English.Contains(en))
                 return Decision.KeepUnknown("'" + en + "' is a rare short English word; more likely a Hebrew slip");
 
             string heTrail = hebrew.Substring(he.Length);
