@@ -222,8 +222,8 @@ if IsValidHebrew(he)           -> keep "valid Hebrew"          # structurally ne
 if the checker call failed     -> keep "dictionary fault"
 heTrail = hebrew[len(he):]
 en = TrimTrailing(english); enValid = len(en) >= 2 and IsValidEnglish(en)
-if enValid and len(en) < 6 and en not in CommonEnglish -> keep "rare short English word", Unknown = true
-                               # the English checker accepts "hyuk"; the Hebrew slip יטולת became "hyuk,"
+if enValid and len(en) < 5 and en not in CommonEnglish -> keep "rare short English word", Unknown = true
+                               # the English checker accepts obscure 4-letter words ("hyuk"); 5+ letters always convert
 corrected, strong = (names_guard and prevUnknown) ? null : TryAutoCorrect(Hebrew, he)   # the guard only withholds autocorrect here
 if enValid and len(en) >= 4    -> FIX English, text = english
 if corrected and strong        -> FIX Hebrew, text = corrected + heTrail
@@ -541,7 +541,7 @@ All reads from the worker thread and writes from the UI thread: guard the sets w
 | `tal` alone / `tal` after an unknown word | English | fix → `אשך` / keep | names guard needs a preceding unknown word |
 | `webguru` | English | keep, Unknown = true | feeds the names guard |
 | `csh,v` (בדיכה) | Hebrew | keep by default | Hebrew autocorrect is opt-in |
-| `hyuk,` / `hyuk` | Hebrew | keep | "hyuk" is in the English dictionary but not an everyday word; `did`, `text`, `workflow` still convert |
+| `hyuk,` / `hyuk` | Hebrew | keep | "hyuk" is a 4-letter obscure word; the everyday-word check only applies to words under 5 letters. `did`, `text`, `field`, `shift`, `workflow` still convert |
 | autocorrect on: `chsev` | English | fix → `בדיקה` | cross-layout typo repair (swapped pair) |
 | autocorrect on: `hlelo` | Hebrew | fix → `hello` | cross-layout typo repair the other way |
 | autocorrect off: `chsev` | English | keep | repair needs the autocorrect switch |
